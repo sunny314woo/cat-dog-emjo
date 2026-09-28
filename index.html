@@ -1,27 +1,264 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#faf8f3"><link rel="canonical" href="https://pet.wisteriasoftware.uk/">
-<title>Custom Pet Stickers from Your Photo | My Pet Stickers</title>
-<meta name="description" content="Turn your cat or dog into 9 custom stickers. Preview four adorable styles, choose your favorite, and get your personalized sticker pack.">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css"><script src="config.js"></script><script src="app.js" defer></script>
+  <!--
+    File purpose:
+    - Public landing page and V1 product flow shell for My Pet Stickers.
+
+    Major functions:
+    - Responsive brand header and direct-value hero.
+    - Cat/dog scrapbook sample carousel.
+    - Upload / style / pack demo workflow.
+    - Compact product value, price, delivery, and FAQ sections.
+
+    Last modification:
+    - 【MODIFIED】 Rebuilt the long marketing page into a compact responsive pet-studio layout while preserving the existing demo flow.
+  -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#faf8f3">
+  <link rel="canonical" href="https://pet.wisteriasoftware.uk/">
+  <title>Custom Pet Stickers from Your Photo | My Pet Stickers</title>
+  <meta name="description" content="Turn your cat or dog into 9 custom stickers. Preview four adorable styles, choose your favorite, and see the full pack before you pay.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
+  <script src="app.js" defer></script>
 </head>
+
 <body>
-<div class="announcement">Their little face. Every big feeling. <span>Preview before you pay.</span></div>
-<header><a class="brand" href="#top"><svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="11" cy="12" rx="5" ry="7" transform="rotate(-25 11 12)"/><ellipse cx="25" cy="9" rx="5" ry="7" transform="rotate(15 25 9)"/><ellipse cx="34" cy="20" rx="4" ry="6" transform="rotate(35 34 20)"/><ellipse cx="5" cy="25" rx="4" ry="6" transform="rotate(-30 5 25)"/><path d="M11 29c0-12 14-15 19-5 7 14-5 11-9 10-5 4-12 3-10-5"/></svg><span>my pet<br><b>stickers</b></span></a><nav aria-label="Main navigation"><a href="#gallery">The transformations</a><a href="#styles">Our styles</a><a href="#included">What’s inside</a></nav><a class="button small" href="#create">Create my stickers <span>↗</span></a></header>
-<main id="top">
-<section class="hero shell">
-<div class="hero-copy"><p class="eyebrow">CUSTOM STICKERS FOR CATS & DOGS</p><h1>Your favorite face.<br><em>Nine little <br>personalities.</em></h1><p class="lede">Turn a photo of your pet into a sticker pack that’s as one-of-a-kind as they are.</p><a class="button" href="#create">Create my free preview <span>↗</span></a><p class="under-button">No account needed. No payment to preview.</p><div class="hero-facts"><span>9 custom stickers</span><i></i><span>4 art styles</span><i></i><span>$9.99, once</span></div></div>
-<div class="hero-visual"><div class="hero-sheet"><div class="sheet-label"><span>THE SAME LITTLE FACE,</span><span>ALL THE FEELINGS.</span></div><img src="assets/cat-grid.png" alt="Nine illustrated expressions of the same tabby kitten" fetchpriority="high"><div class="sheet-bottom">Made from your favorite photo <span>♡</span></div></div><figure class="hero-original"><img src="assets/cat-photo.png" alt="Original photo of a tabby kitten looking at a phone"><figcaption>It all starts with this.</figcaption></figure><span class="drawn-arrow" aria-hidden="true">⤴</span><div class="round-seal">100% THEM<br><span>♡</span><br>IN EVERY MOOD</div></div>
-</section>
-<div class="promise-strip"><span>Made for <b>your</b> cat or dog</span><span>See all 9 before you pay</span><span>Transparent, cut-out files</span><span>Download + email delivery</span></div>
-<section class="section shell" id="gallery"><div class="section-head"><div><p class="eyebrow">FROM CAMERA ROLL TO CONVERSATION</p><h2>Oh, that’s <em>so them.</em></h2></div><p>The head tilt. The tiny paws. The unmistakable face.<br>A little more of your pet in every chat.</p></div><div class="gallery"><article class="example"><div class="example-photo"><img src="assets/cat-photo.png" alt="Original tabby kitten photo" loading="lazy"><span>THE PHOTO</span></div><div class="example-grid"><img src="assets/cat-grid.png" alt="The kitten transformed into nine custom stickers" loading="lazy"><span>THE PERSONALITY <b>↗</b></span></div><p>A tiny face. A full range of feelings.<span>CAT COLLECTION · SAMPLE PACK</span></p></article><article class="example"><div class="example-photo"><img src="assets/dog-photo.jpg" alt="Original photo of a cream-colored dog" loading="lazy"><span>THE PHOTO</span></div><div class="example-grid dog-grid"><img src="assets/dog-grid.png" alt="Nine expressive illustrations of the cream-colored dog" loading="lazy"><span>THE PERSONALITY <b>↗</b></span></div><p>Good dog. Excellent expressions.<span>DOG COLLECTION · SAMPLE PACK</span></p></article></div></section>
-<section class="styles-section section" id="styles"><div class="shell"><div class="section-head"><div><p class="eyebrow">ONE PET. FOUR WAYS TO FALL IN LOVE.</p><h2>Find their <em>kind of cute.</em></h2></div><div class="segmented" aria-label="Style example pet"><button data-example="cat" aria-pressed="true" class="active">Cat styles</button><button data-example="dog" aria-pressed="false">Dog styles</button></div></div><div class="style-cards" id="styleCards"></div><p class="style-note">Same pet, same pose. A different little personality in every brushstroke.</p></div></section>
-<section class="section shell process"><div><p class="eyebrow">A LITTLE PHOTO. A LOT OF PERSONALITY.</p><h2>Three steps to<br>their <em>sticker debut.</em></h2></div><div class="process-steps"><article><span>01</span><h3>Upload your pet</h3><p>One clear photo of your cat or dog. Their face and unique markings do the talking.</p></article><article><span>02</span><h3>Find your favorite style</h3><p>See four versions of your pet, choose one, then preview the full nine-sticker pack.</p></article><article><span>03</span><h3>Love it? Make it yours.</h3><p>Pay $9.99 to unlock the clean, transparent files. Download them and get a copy by email.</p></article></div></section>
-<section class="create-section section" id="create"><div class="shell"><div class="center-heading"><p class="eyebrow">THE NEXT LITTLE STAR? YOURS.</p><h2>Let’s make something <em>adorable.</em></h2><p>Preview first. Fall in love. Then make it yours.</p></div><div class="creator"><div class="creator-form"><ol class="progress"><li class="current">1 <span>Your photo</span></li><li>2 <span>Your style</span></li><li>3 <span>Your pack</span></li></ol><h3>Who’s stealing the spotlight?</h3><div class="segmented pet-choices"><button data-pet="cat" class="active" aria-pressed="true">My cat</button><button data-pet="dog" aria-pressed="false">My dog</button></div><label class="upload" id="uploadBox"><input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp"><svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V9m-8 8 8-8 8 8M10 29v10h28V29"/></svg><strong>Drop their photo here</strong><span>or <u>choose a photo</u></span><small>JPG, PNG or WebP · Up to 10 MB</small></label><p class="photo-tip">One pet, good light, and a clear view of their face.<br>That’s all you need to start.</p><button class="button full" id="previewButton">Create my free preview <span>↗</span></button><p class="form-status" id="formStatus" role="status">Want a closer look? <button id="sampleButton">Explore a sample pack</button></p></div><div class="creator-result"><div class="result-label"><span id="resultLabel">A LITTLE INSPIRATION</span><span>MY PET STICKERS</span></div><div id="resultCanvas" class="result-canvas"><img src="assets/cat-grid.png" alt="Sample kitten sticker pack" id="resultImage"><div class="preview-watermark" id="watermark" hidden>MY PET STICKERS · PREVIEW<br>MY PET STICKERS · PREVIEW<br>MY PET STICKERS · PREVIEW</div></div><div id="sampleStyles" class="sample-styles" hidden></div><div class="result-bottom"><strong id="resultTitle">Their face. Your new favorite reply.</strong><p id="resultDescription">Nine little ways to say hello, thank you, or “I need a hug.”</p></div><div id="checkoutPanel" hidden><label for="email">Send the finished pack to</label><input id="email" type="email" placeholder="you@example.com" autocomplete="email"><button class="button full" id="checkoutButton" disabled>Unlock my pack · $9.99 <span>↗</span></button><small>Sample preview only — checkout opens for your own generated pack.</small></div></div></div></div></section>
-<section class="section shell included" id="included"><div class="included-art"><div class="mini-photo"><img src="assets/dog-photo.jpg" alt="Cream dog before illustration" loading="lazy"></div><img class="included-grid" src="assets/dog-grid.png" alt="Full nine-sticker dog sample sheet" loading="lazy"><div class="file-tag"><span>YOUR-PET-STICKERS.ZIP</span><b>A whole lot of them. In one little file.</b></div></div><div class="included-copy"><p class="eyebrow">A LITTLE PACK WITH EVERYTHING IN IT</p><h2>All their moods.<br><em>All yours.</em></h2><p class="price">$9.99 <span>one pet · one style · one-time payment</span></p><ul><li><b>9 individual stickers</b><span>Transparent, cut-out PNGs. No watermark.</span></li><li><b>The complete 3 × 3 sheet</b><span>Your full collection in one high-resolution image.</span></li><li><b>Sizes for your favorite chats</b><span>WeChat 240 × 240 and WhatsApp 512 × 512 exports.</span></li><li><b>Download it. Keep it. Send it.</b><span>One organized ZIP, plus email delivery.</span></li></ul><a class="button" href="#create">Create my free preview <span>↗</span></a><small>Digital files only. No physical stickers are shipped.</small></div></section>
-<section class="faq section shell"><div><p class="eyebrow">GOOD QUESTIONS, LITTLE ANSWERS</p><h2>A few things<br>you might <em>wonder.</em></h2></div><div><details open><summary>Which pets can become stickers?</summary><p>One cat or one dog per pack. Choose a photo with just your pet, with their face and markings easy to see.</p></details><details><summary>Can I see my pack before I pay?</summary><p>Yes. First, preview your pet in four styles. Pick your favorite to see all nine stickers with a visible watermark and a solid background. Pay only when you’re happy with the preview.</p></details><details><summary>Are the final stickers transparent?</summary><p>Yes. The paid pack includes clean, transparent PNGs without watermarks, cut into nine separate files, plus the complete sheet.</p></details><details><summary>How do I use them in my chats?</summary><p>Your pack includes WeChat-size PNGs and WhatsApp-size files. Save and import them using your preferred sticker tool. Automatic installation into messaging apps is not included.</p></details><details><summary>Do I need an account?</summary><p>No account or subscription. Your email is used for your order and to deliver your finished pack.</p></details></div></section>
-<section class="closing"><p>For the face you could never get tired of.</p><a href="#create">Make them a sticker. <span>↗</span></a></section>
-</main><footer class="shell"><a class="footer-brand" href="#top">my pet stickers<span>♡</span></a><p>A little more love in every conversation.</p><span>© 2026 My Pet Stickers</span><a href="#create">Create your pack ↗</a></footer>
-</body></html>
+  <!-- 【MODIFIED】 Keep the announcement concise so the product value appears immediately. -->
+  <div class="announcement">
+    <span>Preview before you pay.</span>
+    <span class="announcement-detail">No account · Cats & dogs · $9.99 one-time</span>
+  </div>
+
+  <!-- 【MODIFIED】 Simplified navigation for a short one-page conversion flow. -->
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="My Pet Stickers home">
+      <svg viewBox="0 0 40 40" aria-hidden="true">
+        <ellipse cx="11" cy="12" rx="5" ry="7" transform="rotate(-25 11 12)"></ellipse>
+        <ellipse cx="25" cy="9" rx="5" ry="7" transform="rotate(15 25 9)"></ellipse>
+        <ellipse cx="34" cy="20" rx="4" ry="6" transform="rotate(35 34 20)"></ellipse>
+        <ellipse cx="5" cy="25" rx="4" ry="6" transform="rotate(-30 5 25)"></ellipse>
+        <path d="M11 29c0-12 14-15 19-5 7 14-5 11-9 10-5 4-12 3-10-5"></path>
+      </svg>
+      <span>my pet<br><b>stickers</b></span>
+    </a>
+
+    <nav aria-label="Main navigation">
+      <a href="#examples">Examples</a>
+      <a href="#how">How it works</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+
+    <a class="button small header-cta" href="#create">Create free preview <span>↗</span></a>
+  </header>
+
+  <main id="top">
+    <!-- 【MODIFIED】 Hero combines direct product explanation with an editorial scrapbook carousel. -->
+    <section class="hero shell" id="examples">
+      <div class="hero-copy">
+        <p class="eyebrow">CUSTOM STICKERS FOR CATS & DOGS</p>
+        <h1>Turn Your Pet Into<br><em>9 Adorable Stickers.</em></h1>
+        <p class="lede">Upload one photo, preview four styles, and see your full sticker pack before you pay.</p>
+
+        <div class="hero-actions">
+          <a class="button" href="#create">Create My Free Preview <span>↗</span></a>
+          <p class="under-button">No account · Preview before you pay · $9.99 one-time</p>
+        </div>
+
+        <div class="hero-facts" aria-label="Product highlights">
+          <span>9 custom stickers</span><i aria-hidden="true"></i>
+          <span>4 art styles</span><i aria-hidden="true"></i>
+          <span>Transparent PNGs</span>
+        </div>
+      </div>
+
+      <div class="hero-showcase" id="heroCarousel" aria-roledescription="carousel" aria-label="Pet sticker examples">
+        <div class="carousel-stage">
+          <article class="carousel-slide is-active" data-slide="0" aria-hidden="false">
+            <div class="scrapbook scrapbook-cat">
+              <div class="scrapbook-sheet cat-sheet">
+                <div class="sheet-label">
+                  <span>THE SAME LITTLE FACE,</span>
+                  <span>ALL THE FEELINGS.</span>
+                </div>
+                <img src="assets/cat-grid.png" alt="Nine illustrated expressions of the same tabby kitten" fetchpriority="high">
+                <div class="sheet-bottom">Made from your favorite photo <span>♡</span></div>
+              </div>
+
+              <figure class="polaroid cat-polaroid">
+                <img src="assets/cat-photo.png" alt="Original photo of the tabby kitten">
+                <figcaption>It all starts with this.</figcaption>
+              </figure>
+
+              <span class="scribble-arrow cat-arrow" aria-hidden="true">↗</span>
+              <div class="round-seal">100% THEM<br><span>♡</span><br>IN EVERY MOOD</div>
+            </div>
+          </article>
+
+          <article class="carousel-slide" data-slide="1" aria-hidden="true">
+            <div class="scrapbook scrapbook-dog">
+              <div class="dog-halo" aria-hidden="true"></div>
+
+              <div class="scrapbook-sheet dog-sheet">
+                <img src="assets/dog-grid.png" alt="Nine expressive illustrations of the same cream-colored dog">
+              </div>
+
+              <figure class="polaroid dog-polaroid">
+                <img src="assets/dog-photo.jpg" alt="Original photo of the cream-colored dog">
+                <figcaption>One photo. So many moods.</figcaption>
+              </figure>
+
+              <div class="zip-card">
+                <span>YOUR-PET-STICKERS.ZIP</span>
+                <b>A whole lot of them. In one little file.</b>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="carousel-controls">
+          <button class="carousel-arrow" id="heroPrev" type="button" aria-label="Previous pet example">←</button>
+          <div class="carousel-dots" role="tablist" aria-label="Choose a pet example">
+            <button class="carousel-dot is-active" type="button" data-carousel-dot="0" role="tab" aria-label="Show cat example" aria-selected="true"></button>
+            <button class="carousel-dot" type="button" data-carousel-dot="1" role="tab" aria-label="Show dog example" aria-selected="false"></button>
+          </div>
+          <button class="carousel-arrow" id="heroNext" type="button" aria-label="Next pet example">→</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 【MODIFIED】 Generator now appears immediately after the hero to shorten the path from interest to action. -->
+    <section class="create-section compact-section" id="create">
+      <div class="shell">
+        <div class="section-intro compact-intro">
+          <div>
+            <p class="eyebrow">YOUR PET, NEXT</p>
+            <h2>Make their <em>sticker debut.</em></h2>
+          </div>
+          <p>Choose one clear photo. We’ll keep the face, markings and little details that make them unmistakably yours.</p>
+        </div>
+
+        <div class="creator studio-card">
+          <div class="creator-form">
+            <ol class="progress" aria-label="Sticker creation progress">
+              <li class="current">1 <span>Your photo</span></li>
+              <li>2 <span>Your style</span></li>
+              <li>3 <span>Your pack</span></li>
+            </ol>
+
+            <h3>Who’s stealing the spotlight?</h3>
+
+            <div class="segmented pet-choices" aria-label="Choose pet type">
+              <button data-pet="cat" class="active" aria-pressed="true">My cat</button>
+              <button data-pet="dog" aria-pressed="false">My dog</button>
+            </div>
+
+            <label class="upload" id="uploadBox">
+              <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V9m-8 8 8-8 8 8M10 29v10h28V29"></path></svg>
+              <strong>Drop their photo here</strong>
+              <span>or <u>choose a photo</u></span>
+              <small>JPG, PNG or WebP · Up to 10 MB</small>
+            </label>
+
+            <p class="photo-tip">One pet · good light · clear face and markings</p>
+            <button class="button full" id="previewButton" type="button">Create my free preview <span>↗</span></button>
+            <p class="form-status" id="formStatus" role="status">Want a closer look first? <button id="sampleButton" type="button">Explore the sample flow</button></p>
+          </div>
+
+          <div class="creator-result">
+            <div class="result-label"><span id="resultLabel">A LITTLE INSPIRATION</span><span>MY PET STICKERS</span></div>
+
+            <div id="resultCanvas" class="result-canvas">
+              <img src="assets/cat-grid.png" alt="Sample kitten sticker pack" id="resultImage">
+              <div class="preview-watermark" id="watermark" hidden>MY PET STICKERS · PREVIEW<br>MY PET STICKERS · PREVIEW<br>MY PET STICKERS · PREVIEW</div>
+            </div>
+
+            <div id="sampleStyles" class="sample-styles" hidden></div>
+
+            <div class="result-bottom">
+              <strong id="resultTitle">Their face. Your new favorite reply.</strong>
+              <p id="resultDescription">Nine little ways to say hello, thank you, or “I need a hug.”</p>
+            </div>
+
+            <div id="checkoutPanel" hidden>
+              <label for="email">Send the finished pack to</label>
+              <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
+              <button class="button full" id="checkoutButton" type="button" disabled>Unlock my pack · $9.99 <span>↗</span></button>
+              <small>Sample preview only — checkout opens for your own generated pack.</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="style-teaser" aria-label="Available art styles">
+          <span>4 styles included</span><b>Soft Kawaii</b><i></i><b>Bold Cartoon</b><i></i><b>Semi-Realistic</b><i></i><b>Storybook Watercolor</b>
+        </div>
+      </div>
+    </section>
+
+    <!-- 【MODIFIED】 Combined process, price and deliverables into one compact section. -->
+    <section class="compact-section product-summary shell" id="how">
+      <div class="how-column">
+        <p class="eyebrow">ONE PHOTO. THREE EASY STEPS.</p>
+        <h2>From camera roll to<br><em>conversation.</em></h2>
+
+        <div class="mini-steps">
+          <article><span>01</span><div><h3>Upload your pet</h3><p>One clear photo of one cat or one dog.</p></div></article>
+          <article><span>02</span><div><h3>Pick their look</h3><p>Preview four styles, then choose your favorite.</p></div></article>
+          <article><span>03</span><div><h3>See all nine before paying</h3><p>Love the preview? Unlock the clean HD files for $9.99.</p></div></article>
+        </div>
+      </div>
+
+      <aside class="pack-card">
+        <div class="pack-card-top"><span>YOUR FINISHED PACK</span><strong>$9.99</strong></div>
+        <p class="pack-subline">one pet · one style · one-time payment</p>
+
+        <ul>
+          <li><b>9 individual transparent PNGs</b><span>Clean files with no watermark.</span></li>
+          <li><b>Complete 3 × 3 sticker sheet</b><span>Your whole collection in one high-resolution image.</span></li>
+          <li><b>Chat-ready exports</b><span>WeChat 240 × 240 and WhatsApp 512 × 512.</span></li>
+          <li><b>ZIP download + email delivery</b><span>Everything organized and easy to keep.</span></li>
+        </ul>
+
+        <a class="button full" href="#create">Create my free preview <span>↗</span></a>
+        <small>Digital files only. No physical stickers are shipped.</small>
+      </aside>
+    </section>
+
+    <!-- 【MODIFIED】 Kept FAQ compact; no item is forced open by default. -->
+    <section class="faq compact-section shell" id="faq">
+      <div class="faq-heading">
+        <p class="eyebrow">GOOD QUESTIONS, LITTLE ANSWERS</p>
+        <h2>A few things<br>you might <em>wonder.</em></h2>
+      </div>
+
+      <div class="faq-list">
+        <details><summary>Which pets can become stickers?</summary><p>One cat or one dog per pack. Choose a photo with just your pet, with their face and markings easy to see.</p></details>
+        <details><summary>Can I see my pack before I pay?</summary><p>Yes. First, preview your pet in four styles. Pick your favorite to see all nine stickers with a visible watermark. Pay only when you’re happy with the preview.</p></details>
+        <details><summary>Are the final stickers transparent?</summary><p>Yes. The paid pack includes clean transparent PNGs without watermarks, cut into nine separate files, plus the complete sheet.</p></details>
+        <details><summary>How do I use them in my chats?</summary><p>Your pack includes WeChat-size PNGs and WhatsApp-size files. Save and import them using your preferred sticker tool. Automatic installation into messaging apps is not included.</p></details>
+        <details><summary>Do I need an account?</summary><p>No account or subscription. Your email is used for your order and to deliver your finished pack.</p></details>
+      </div>
+    </section>
+
+    <section class="closing">
+      <p>For the face you could never get tired of.</p>
+      <a href="#create">Make them a sticker. <span>↗</span></a>
+    </section>
+  </main>
+
+  <footer class="shell">
+    <a class="footer-brand" href="#top">my pet stickers<span>♡</span></a>
+    <p>A little more love in every conversation.</p>
+    <span>© 2026 My Pet Stickers</span>
+    <a href="#create">Create your pack ↗</a>
+  </footer>
+</body>
+</html>
