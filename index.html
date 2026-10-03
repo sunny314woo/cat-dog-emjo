@@ -1,264 +1,35 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <!--
-    File purpose:
-    - Public landing page and V1 product flow shell for My Pet Stickers.
-
-    Major functions:
-    - Responsive brand header and direct-value hero.
-    - Cat/dog scrapbook sample carousel.
-    - Upload / style / pack demo workflow.
-    - Compact product value, price, delivery, and FAQ sections.
-
-    Last modification:
-    - 【MODIFIED】 Rebuilt the long marketing page into a compact responsive pet-studio layout while preserving the existing demo flow.
-  -->
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#faf8f3">
-  <link rel="canonical" href="https://pet.wisteriasoftware.uk/">
-  <title>Custom Pet Stickers from Your Photo | My Pet Stickers</title>
-  <meta name="description" content="Turn your cat or dog into 9 custom stickers. Preview four adorable styles, choose your favorite, and see the full pack before you pay.">
-
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&display=swap" rel="stylesheet">
-
-  <link rel="stylesheet" href="styles.css">
-  <script src="config.js"></script>
-  <script src="app.js" defer></script>
-</head>
-
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f8f3ea"><title>自助表情包生成器</title><meta name="description" content="把喜欢的模样，变成聊天里的九种小心情。先看效果，挑两张喜欢的，再决定是否解锁。"><link rel="stylesheet" href="/sticker/styles.css"><script defer src="/sticker/config.js"></script><script defer src="/sticker/app.js"></script></head>
 <body>
-  <!-- 【MODIFIED】 Keep the announcement concise so the product value appears immediately. -->
-  <div class="announcement">
-    <span>Preview before you pay.</span>
-    <span class="announcement-detail">No account · Cats & dogs · $9.99 one-time</span>
-  </div>
+<header class="topbar"><button class="icon-button" id="mobile-back" aria-label="返回首页">‹</button><span id="mobile-title">自助表情包生成器</span><button class="quiet" id="account-button">⚙ 设置</button></header>
+<main>
 
-  <!-- 【MODIFIED】 Simplified navigation for a short one-page conversion flow. -->
-  <header class="site-header">
-    <a class="brand" href="#top" aria-label="My Pet Stickers home">
-      <svg viewBox="0 0 40 40" aria-hidden="true">
-        <ellipse cx="11" cy="12" rx="5" ry="7" transform="rotate(-25 11 12)"></ellipse>
-        <ellipse cx="25" cy="9" rx="5" ry="7" transform="rotate(15 25 9)"></ellipse>
-        <ellipse cx="34" cy="20" rx="4" ry="6" transform="rotate(35 34 20)"></ellipse>
-        <ellipse cx="5" cy="25" rx="4" ry="6" transform="rotate(-30 5 25)"></ellipse>
-        <path d="M11 29c0-12 14-15 19-5 7 14-5 11-9 10-5 4-12 3-10-5"></path>
-      </svg>
-      <span>my pet<br><b>stickers</b></span>
-    </a>
-
-    <nav aria-label="Main navigation">
-      <a href="#examples">Examples</a>
-      <a href="#how">How it works</a>
-      <a href="#faq">FAQ</a>
-    </nav>
-
-    <a class="button small header-cta" href="#create">Create free preview <span>↗</span></a>
-  </header>
-
-  <main id="top">
-    <!-- 【MODIFIED】 Hero combines direct product explanation with an editorial scrapbook carousel. -->
-    <section class="hero shell" id="examples">
-      <div class="hero-copy">
-        <p class="eyebrow">CUSTOM STICKERS FOR CATS & DOGS</p>
-        <h1>Turn Your Pet Into<br><em>9 Adorable Stickers.</em></h1>
-        <p class="lede">Upload one photo, preview four styles, and see your full sticker pack before you pay.</p>
-
-        <div class="hero-actions">
-          <a class="button" href="#create">Create My Free Preview <span>↗</span></a>
-          <p class="under-button">No account · Preview before you pay · $9.99 one-time</p>
-        </div>
-
-        <div class="hero-facts" aria-label="Product highlights">
-          <span>9 custom stickers</span><i aria-hidden="true"></i>
-          <span>4 art styles</span><i aria-hidden="true"></i>
-          <span>Transparent PNGs</span>
-        </div>
-      </div>
-
-      <div class="hero-showcase" id="heroCarousel" aria-roledescription="carousel" aria-label="Pet sticker examples">
-        <div class="carousel-stage">
-          <article class="carousel-slide is-active" data-slide="0" aria-hidden="false">
-            <div class="scrapbook scrapbook-cat">
-              <div class="scrapbook-sheet cat-sheet">
-                <div class="sheet-label">
-                  <span>THE SAME LITTLE FACE,</span>
-                  <span>ALL THE FEELINGS.</span>
-                </div>
-                <img src="assets/cat-grid.png" alt="Nine illustrated expressions of the same tabby kitten" fetchpriority="high">
-                <div class="sheet-bottom">Made from your favorite photo <span>♡</span></div>
-              </div>
-
-              <figure class="polaroid cat-polaroid">
-                <img src="assets/cat-photo.png" alt="Original photo of the tabby kitten">
-                <figcaption>It all starts with this.</figcaption>
-              </figure>
-
-              <span class="scribble-arrow cat-arrow" aria-hidden="true">↗</span>
-              <div class="round-seal">100% THEM<br><span>♡</span><br>IN EVERY MOOD</div>
-            </div>
-          </article>
-
-          <article class="carousel-slide" data-slide="1" aria-hidden="true">
-            <div class="scrapbook scrapbook-dog">
-              <div class="dog-halo" aria-hidden="true"></div>
-
-              <div class="scrapbook-sheet dog-sheet">
-                <img src="assets/dog-grid.png" alt="Nine expressive illustrations of the same cream-colored dog">
-              </div>
-
-              <figure class="polaroid dog-polaroid">
-                <img src="assets/dog-photo.jpg" alt="Original photo of the cream-colored dog">
-                <figcaption>One photo. So many moods.</figcaption>
-              </figure>
-
-              <div class="zip-card">
-                <span>YOUR-PET-STICKERS.ZIP</span>
-                <b>A whole lot of them. In one little file.</b>
-              </div>
-            </div>
-          </article>
-        </div>
-
-        <div class="carousel-controls">
-          <button class="carousel-arrow" id="heroPrev" type="button" aria-label="Previous pet example">←</button>
-          <div class="carousel-dots" role="tablist" aria-label="Choose a pet example">
-            <button class="carousel-dot is-active" type="button" data-carousel-dot="0" role="tab" aria-label="Show cat example" aria-selected="true"></button>
-            <button class="carousel-dot" type="button" data-carousel-dot="1" role="tab" aria-label="Show dog example" aria-selected="false"></button>
-          </div>
-          <button class="carousel-arrow" id="heroNext" type="button" aria-label="Next pet example">→</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- 【MODIFIED】 Generator now appears immediately after the hero to shorten the path from interest to action. -->
-    <section class="create-section compact-section" id="create">
-      <div class="shell">
-        <div class="section-intro compact-intro">
-          <div>
-            <p class="eyebrow">YOUR PET, NEXT</p>
-            <h2>Make their <em>sticker debut.</em></h2>
-          </div>
-          <p>Choose one clear photo. We’ll keep the face, markings and little details that make them unmistakably yours.</p>
-        </div>
-
-        <div class="creator studio-card">
-          <div class="creator-form">
-            <ol class="progress" aria-label="Sticker creation progress">
-              <li class="current">1 <span>Your photo</span></li>
-              <li>2 <span>Your style</span></li>
-              <li>3 <span>Your pack</span></li>
-            </ol>
-
-            <h3>Who’s stealing the spotlight?</h3>
-
-            <div class="segmented pet-choices" aria-label="Choose pet type">
-              <button data-pet="cat" class="active" aria-pressed="true">My cat</button>
-              <button data-pet="dog" aria-pressed="false">My dog</button>
-            </div>
-
-            <label class="upload" id="uploadBox">
-              <input type="file" id="photoInput" accept="image/jpeg,image/png,image/webp">
-              <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M24 31V9m-8 8 8-8 8 8M10 29v10h28V29"></path></svg>
-              <strong>Drop their photo here</strong>
-              <span>or <u>choose a photo</u></span>
-              <small>JPG, PNG or WebP · Up to 10 MB</small>
-            </label>
-
-            <p class="photo-tip">One pet · good light · clear face and markings</p>
-            <button class="button full" id="previewButton" type="button">Create my free preview <span>↗</span></button>
-            <p class="form-status" id="formStatus" role="status">Want a closer look first? <button id="sampleButton" type="button">Explore the sample flow</button></p>
-          </div>
-
-          <div class="creator-result">
-            <div class="result-label"><span id="resultLabel">A LITTLE INSPIRATION</span><span>MY PET STICKERS</span></div>
-
-            <div id="resultCanvas" class="result-canvas">
-              <img src="assets/cat-grid.png" alt="Sample kitten sticker pack" id="resultImage">
-              <div class="preview-watermark" id="watermark" hidden>MY PET STICKERS · PREVIEW<br>MY PET STICKERS · PREVIEW<br>MY PET STICKERS · PREVIEW</div>
-            </div>
-
-            <div id="sampleStyles" class="sample-styles" hidden></div>
-
-            <div class="result-bottom">
-              <strong id="resultTitle">Their face. Your new favorite reply.</strong>
-              <p id="resultDescription">Nine little ways to say hello, thank you, or “I need a hug.”</p>
-            </div>
-
-            <div id="checkoutPanel" hidden>
-              <label for="email">Send the finished pack to</label>
-              <input id="email" type="email" placeholder="you@example.com" autocomplete="email">
-              <button class="button full" id="checkoutButton" type="button" disabled>Unlock my pack · $9.99 <span>↗</span></button>
-              <small>Sample preview only — checkout opens for your own generated pack.</small>
-            </div>
-          </div>
-        </div>
-
-        <div class="style-teaser" aria-label="Available art styles">
-          <span>4 styles included</span><b>Soft Kawaii</b><i></i><b>Bold Cartoon</b><i></i><b>Semi-Realistic</b><i></i><b>Storybook Watercolor</b>
-        </div>
-      </div>
-    </section>
-
-    <!-- 【MODIFIED】 Combined process, price and deliverables into one compact section. -->
-    <section class="compact-section product-summary shell" id="how">
-      <div class="how-column">
-        <p class="eyebrow">ONE PHOTO. THREE EASY STEPS.</p>
-        <h2>From camera roll to<br><em>conversation.</em></h2>
-
-        <div class="mini-steps">
-          <article><span>01</span><div><h3>Upload your pet</h3><p>One clear photo of one cat or one dog.</p></div></article>
-          <article><span>02</span><div><h3>Pick their look</h3><p>Preview four styles, then choose your favorite.</p></div></article>
-          <article><span>03</span><div><h3>See all nine before paying</h3><p>Love the preview? Unlock the clean HD files for $9.99.</p></div></article>
-        </div>
-      </div>
-
-      <aside class="pack-card">
-        <div class="pack-card-top"><span>YOUR FINISHED PACK</span><strong>$9.99</strong></div>
-        <p class="pack-subline">one pet · one style · one-time payment</p>
-
-        <ul>
-          <li><b>9 individual transparent PNGs</b><span>Clean files with no watermark.</span></li>
-          <li><b>Complete 3 × 3 sticker sheet</b><span>Your whole collection in one high-resolution image.</span></li>
-          <li><b>Chat-ready exports</b><span>WeChat 240 × 240 and WhatsApp 512 × 512.</span></li>
-          <li><b>ZIP download + email delivery</b><span>Everything organized and easy to keep.</span></li>
-        </ul>
-
-        <a class="button full" href="#create">Create my free preview <span>↗</span></a>
-        <small>Digital files only. No physical stickers are shipped.</small>
-      </aside>
-    </section>
-
-    <!-- 【MODIFIED】 Kept FAQ compact; no item is forced open by default. -->
-    <section class="faq compact-section shell" id="faq">
-      <div class="faq-heading">
-        <p class="eyebrow">GOOD QUESTIONS, LITTLE ANSWERS</p>
-        <h2>A few things<br>you might <em>wonder.</em></h2>
-      </div>
-
-      <div class="faq-list">
-        <details><summary>Which pets can become stickers?</summary><p>One cat or one dog per pack. Choose a photo with just your pet, with their face and markings easy to see.</p></details>
-        <details><summary>Can I see my pack before I pay?</summary><p>Yes. First, preview your pet in four styles. Pick your favorite to see all nine stickers with a visible watermark. Pay only when you’re happy with the preview.</p></details>
-        <details><summary>Are the final stickers transparent?</summary><p>Yes. The paid pack includes clean transparent PNGs without watermarks, cut into nine separate files, plus the complete sheet.</p></details>
-        <details><summary>How do I use them in my chats?</summary><p>Your pack includes WeChat-size PNGs and WhatsApp-size files. Save and import them using your preferred sticker tool. Automatic installation into messaging apps is not included.</p></details>
-        <details><summary>Do I need an account?</summary><p>No account or subscription. Your email is used for your order and to deliver your finished pack.</p></details>
-      </div>
-    </section>
-
-    <section class="closing">
-      <p>For the face you could never get tired of.</p>
-      <a href="#create">Make them a sticker. <span>↗</span></a>
-    </section>
-  </main>
-
-  <footer class="shell">
-    <a class="footer-brand" href="#top">my pet stickers<span>♡</span></a>
-    <p>A little more love in every conversation.</p>
-    <span>© 2026 My Pet Stickers</span>
-    <a href="#create">Create your pack ↗</a>
-  </footer>
-</body>
-</html>
+<section class="hero" id="hero"><div class="hero-copy"><h1>自助表情包生成器</h1></div><div class="home-example"><div class="demo-stage"><div class="source-row"><div class="source-polaroid"><img src="/sticker/assets/dog-photo.jpg" alt="狗狗原照片示例"></div><p class="hero-sub">一张喜欢的照片<br>变成 9 种小心情</p></div><div class="home-grid" id="home-grid"><img src="/sticker/assets/dog-grid.png" width="1536" height="1024" alt="九种狗狗表情样例"></div></div><button class="button primary" id="mobile-start">上传照片，开始制作 →</button><button class="quiet" id="resume-result" hidden>拆开刚刚做好的小心情 ↗</button><p class="home-card-note">先看效果 · 免费挑选 2 张正式贴纸</p></div><div class="home-steps"><div><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6" y="10" width="28" height="23" rx="4"/><path d="M14 10V6h12v4M10 28l8-10 6 7 5-5"/><circle cx="27" cy="16" r="2"/></svg><span>上传照片</span></div><div><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 25L17 6l17 5-7 20zM7 21l-3 7 9 7h15M14 24l10-9"/></svg><span>挑选风格</span></div><div><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="8" width="30" height="25" rx="5"/><path d="M13 8V5h14v3M11 25h8M11 29h5"/><circle cx="25" cy="21" r="5"/><path d="M29 25l5 6"/></svg><span>领取表情包</span></div></div><p class="home-foot">把可爱的 TA，放进每一次聊天里</p></section>
+<section class="studio" id="studio" hidden aria-labelledby="studio-title">
+<div class="section-top"><div><p class="eyebrow">YOUR LITTLE STICKER STUDIO</p><h2 id="studio-title">上传你喜欢的照片</h2></div><span class="step-badge" id="step-badge">01 / 上传与选择</span></div>
+<div id="connection-error" class="notice error" hidden></div>
+<div id="maker" data-step="upload"><nav class="flow-steps" aria-label="制作步骤"><span id="flow-upload" class="active">1 上传照片</span><span id="flow-style">2 选择画风</span><span>3 解锁分享</span></nav>
+<div class="maker-columns"><section class="panel upload-panel"><div class="panel-heading"><h3><span class="number">01</span> 选一个熟悉的模样</h3><span class="small">1–3 张</span></div><p class="muted">照片里是同一个 TA。清晰的正脸，就很好。</p>
+<label class="upload-zone" id="upload-zone" for="photos"><input type="file" id="photos" accept="image/jpeg,image/png,image/webp" multiple><span id="upload-empty"><span class="upload-icon">＋</span><strong>放进一张喜欢的照片</strong><span>点这里上传，或拖拽到这里</span><small>JPG / PNG / WebP · 每张最多 15 MB</small></span><img id="main-photo" alt="第一张主体参考照片" hidden><span class="photo-label" id="photo-label" hidden>主参考 · 第 1 张</span></label>
+<div class="photo-actions" id="photo-actions" hidden><button class="quiet" id="crop-button">⌗ 调整主体范围</button><button class="quiet" id="add-photo-button">＋ 补充照片</button><button class="quiet" id="replace-button">重新选择</button></div><div id="file-list"></div><p class="upload-hint">默认保留整张照片。多人合照时，请框出这次的主角。<br>第 2、3 张仅补充特征，不会出现在页面预览中。</p><button class="button primary full" id="next-style" disabled>下一步：选择画风 →</button></section>
+<section class="panel settings-panel"><button class="quiet" id="back-upload">← 返回调整照片</button><div class="panel-heading"><h3><span class="number">02</span> 选择喜欢的风格</h3><span class="small">选一个喜欢的</span></div><p class="style-explanation">以下为固定样例，仅展示画风。生成时会使用你上传的照片。</p><div class="style-options" id="style-options" role="group" aria-label="贴纸画风"></div><div class="options"><label class="toggle-row"><span><strong>一点小配饰</strong><small>小帽子、小花，让情绪更生动</small></span><input type="checkbox" id="accessories" checked role="switch"></label><label class="toggle-row"><span><strong>配上小心情文案</strong><small>画好后再加字，不改变 TA 的模样</small></span><input type="checkbox" id="captions" checked role="switch"></label></div></section></div>
+<section class="emotions-section"><div><h3>九种心情，都有自己的位置。</h3><p class="muted">拆开的是惊喜，情绪不会随机换掉。</p></div><div class="emotion-chips" id="emotion-chips"></div></section>
+<label id="calibration-option" class="consent" hidden><input type="checkbox" id="calibration-consent"><span id="calibration-copy"></span></label>
+<div class="make-bottom"><p><strong id="quota-copy">首次体验，免费挑两张。</strong><br><span>先看九张保护预览，喜欢再解锁整套。</span></p><button class="button primary" id="generate-button" disabled>一键生成表情包</button></div></div>
+<div id="progress-view" class="progress-view" hidden><div class="orbit">✳</div><p class="eyebrow">A LITTLE MAGIC IN PROGRESS</p><h2 id="progress-title">正在记住 TA 的模样</h2><p id="progress-copy">不用反复点击，这一份心情正在路上。</p><div class="progress-steps"><span id="stage-1">照片已收到</span><span id="stage-2">正在画心情</span><span id="stage-3">整理贴纸</span></div></div>
+<div id="result-view" hidden><div class="result-heading"><div><p class="eyebrow">NINE LITTLE REASONS TO SMILE</p><h2>拆开你的小心情</h2><p id="result-description" class="muted">点开小卡片，遇见九个不同的 TA。</p></div><button class="quiet" id="reveal-all">全部翻开</button></div><div class="result-grid" id="result-grid"></div><div id="claim-area" class="claim-area"><p id="selection-copy">拆开后，选两张最喜欢的，免费带走。</p><button class="button primary" id="claim-button" disabled>免费解锁这 2 张 · 分享</button></div><div id="delivery-area" class="delivery-area" hidden><button class="button primary" id="zip-button">下载 9 张透明贴纸 · ZIP ↓</button><button class="button secondary" id="grid-button">下载整套拼图</button></div><div id="unlock-area" class="unlock-area"><div><button class="button primary" id="unlock-button">解锁全部 9 张</button><p class="small price-note" id="unlock-price"></p><button class="quiet demo-link" id="demo-unlock" hidden>体验完整样例（不付款）</button></div></div><div class="result-footer"><span id="expiry-copy"></span><button class="quiet" id="withdraw-calibration" hidden>撤回校准授权</button><button class="quiet" id="start-again">再做一套 ↗</button></div></div>
+</section>
+<section class="afterword" hidden><span>01 — 先看见喜欢</span><span>02 — 带走小心情</span><span>03 — 让聊天更像你</span></section>
+</main><footer><a class="brand" href="/sticker/">emjo<span>✳</span></a><p>每一种小情绪，都值得被好好接住。</p><button class="quiet" id="privacy-button">图片与隐私</button><span class="copyright">© Wisteria Software</span></footer>
+<dialog id="crop-dialog" class="crop-dialog"><div class="dialog-top"><h2>留住这次的主角</h2><button class="icon-button" data-close="crop-dialog" aria-label="关闭">×</button></div><p class="muted">拖动画面调整位置，缩放到主体完整可见。耳朵、头发也留一点空间。</p><div class="crop-ratios" role="group" aria-label="裁剪比例"><button class="chip active" data-ratio="1">正方形</button><button class="chip" data-ratio="0.75">竖幅 3:4</button><button class="chip" data-ratio="1.333333">横幅 4:3</button></div><canvas id="crop-canvas" width="420" height="420" aria-label="拖动调整裁剪主体"></canvas><label class="zoom-label">缩放<input type="range" id="crop-zoom" min="1" max="3" step="0.01" value="1"></label><div class="dialog-actions"><button class="button secondary" id="crop-reset">使用整张照片</button><button class="button primary" id="crop-save">就用这个范围</button></div></dialog>
+<dialog id="account-dialog"><div class="dialog-top"><h2 id="account-title">设置</h2><button class="icon-button" data-close="account-dialog" aria-label="关闭">×</button></div><div class="settings-spec"><strong>交付尺寸</strong><span>512 × 512 · 透明 PNG · 单张贴纸</span><p>原照片可调整裁剪比例，正式贴纸统一为正方形。</p></div><div id="auth-form"><p class="muted">登录与邮件：验证邮箱后可购买完整表情包，并接收作品邮件。无需设置密码。</p><label class="field">邮箱<input type="email" id="email-input" autocomplete="email" placeholder="you@example.com" maxlength="254"></label><div class="code-row"><label class="field">验证码<input type="text" id="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位验证码"></label><button class="button secondary" id="send-code">发送验证码</button></div><p class="small" id="code-hint" aria-live="polite"></p><button class="button primary full" id="verify-code">验证邮箱，继续</button></div><div id="account-details" hidden><h3>登录与邮件</h3><p id="account-email"></p><p class="muted">此验证邮箱用于付费作品邮件交付。更换邮箱请退出后重新验证；不同邮箱的订单和次数不自动合并。</p><div class="balance-box"><span>还可以制作</span><strong id="account-balance">0</strong><span>套完整表情包</span></div><p class="muted">邀请一位首次成功付费的新朋友，你会多得一次制作 9 张的机会。</p><button class="button secondary full" id="copy-invite">复制我的邀请链接 ↗</button><h3>挑选你的表情包套餐</h3><div id="product-list" class="product-list"></div><p class="small muted">价格以结账页为准。图片下载窗口与未用次数分别计算；Bundle 退款细则待确认，正式销售尚未开放。</p><button class="quiet" id="logout-button">退出此邮箱</button></div></dialog>
+<dialog id="confirm-dialog"><div class="dialog-top"><h2>就带走这两种心情？</h2><button class="icon-button" data-close="confirm-dialog" aria-label="关闭">×</button></div><p id="confirm-copy"></p><p class="muted">确认后这两张会锁定，不能换选；在有效期内可以重复下载。解锁整套后，九张都能带走。</p><button class="button primary full" id="confirm-claim">确认解锁，去分享</button></dialog>
+<dialog id="privacy-dialog"><div class="dialog-top"><h2>照片只为这份小心情</h2><button class="icon-button" data-close="privacy-dialog" aria-label="关闭">×</button></div><p>只上传你有权使用的照片。涉及孩子的照片，请由监护人操作。</p><p>普通原照片在处理完成后删除；生成结果默认保留 24 小时。24 小时后下载链接失效，请及时保存。</p><p>校准收集默认关闭。若开放，会单独征求同意；暂定只保留前 100 份同意的成功案例，每份最多 30 天，并支持撤回。</p><p>免费体验按当前设备记录及已验证邮箱进行宽松限制。清除设备记录可能绕过限制，我们不会使用 IP 一刀切限制。</p><p class="muted">本地样例不调用真实 AI、不收款、不发送邮件。</p></dialog>
+<dialog id="share-dialog"><div class="dialog-top"><h2>把小心情发出去</h2><button class="icon-button" data-close="share-dialog" aria-label="关闭">×</button></div>
+<label class="field">分享格式<select id="share-format"><option value="png512">通用 / iMessage · 512×512 PNG</option><option value="webp512">WhatsApp 素材 · 512×512 WebP</option><option value="png256">微信小表情素材 · 256×256 PNG</option></select></label>
+<p class="muted small">均为透明单张，无水印。素材尺寸不是聊天应用的导入保证；链接分享和文件分享不会自动安装为贴纸包。</p>
+<div class="share-actions"><button class="button primary full" id="native-share" disabled>系统分享 · iMessage / 微信</button><button class="button secondary full" id="whatsapp-share" disabled>WhatsApp · 发送链接</button><button class="button secondary" id="save-share" disabled>下载单张</button><button class="button secondary" id="copy-share" disabled>复制分享链接</button></div>
+<input id="share-url" readonly aria-label="此贴纸的分享链接"><p class="small" id="share-status" role="status"></p></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body></html>

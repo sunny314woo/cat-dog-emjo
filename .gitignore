@@ -1,0 +1,28 @@
+.env
+.env.*
+!.env.example
+node_modules/
+dist/
+.DS_Store
+
+# Local reference material: may contain API keys; never publish.
+/doubao/
+/UI/
+/.local-backups/
+
+# Credentials remain local. Only empty/example configuration is shareable.
+*.key
+*.pem
+*apikey*
+*api-key*
+*api_key*
+credentials*
+secrets*
+
+# Private runtime state and generated artifacts.
+/.local-data/
+/.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+/test-results/

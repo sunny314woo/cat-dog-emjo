@@ -1,11 +1,2 @@
-// Public identifiers only. API keys and webhook secrets belong on the server.
-window.EMJO_CONFIG = {
-  apiBaseUrl: "",
-  demoMode: true,
-  paddle: {
-    productId: "pro_01m3m67ms9dxkxckmfvagztmej",
-    priceId: "pri_01m3m6d7yd5hjn5wz071wkwcsy",
-    clientToken: "",
-    environment: "sandbox"
-  }
-};
+// Public endpoint only; credentials remain on the server.
+window.EMJO_CONFIG = Object.freeze({ apiBase: location.hostname === 'wisteriasoftware.uk' ? 'https://api.wisteriasoftware.uk/sticker/api' : '/sticker/api' });

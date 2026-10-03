@@ -1,0 +1,21 @@
+[Unit]
+Description=Pet Stickers independent API
+After=network.target mysql.service
+
+[Service]
+User=wisteria
+Group=wisteria
+WorkingDirectory=/home/wisteria/emjo/current
+EnvironmentFile=/home/wisteria/emjo/shared/server.env
+ExecStartPre=/home/wisteria/emjo/venv/bin/python deploy/check_config.py
+ExecStart=/home/wisteria/emjo/venv/bin/uvicorn server.main:app --host 127.0.0.1 --port 8013 --workers 1
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/wisteria/emjo/shared
+
+[Install]
+WantedBy=multi-user.target

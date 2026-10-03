@@ -1,395 +1,92 @@
-/**
- * File purpose:
- * - Client-side UI behavior for the My Pet Stickers static V1 landing page.
- *
- * Major functions:
- * - Hero cat/dog scrapbook carousel with autoplay and mobile swipe.
- * - Pet type selection and local image validation/preview.
- * - Sample four-style selector and sample nine-sticker pack flow.
- * - Progress, watermark, and demo checkout state updates.
- *
- * Last modification:
- * - 【MODIFIED】 Added responsive carousel behavior and simplified the page logic for the compact pet-studio layout.
- */
+'use strict';
+const $=id=>document.getElementById(id), API=window.EMJO_CONFIG.apiBase;
+let catalog,me,photos=[],cropBlob=null,style,job,selection=new Set(),revealed=new Set(),requestId=null,pollTimer,toastTimer,pendingUnlock=false;
+const saved=(key,value)=>{try{if(value===undefined)return localStorage.getItem(key);localStorage.setItem(key,value)}catch{return null}};
+const toast=text=>{$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,5500)};
+async function api(path,body,method){const r=await fetch(API+path,{method:method||(body?'POST':'GET'),credentials:'include',headers:body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});const data=await r.json();if(!r.ok){const e=new Error(data.error||'暂时无法完成，请稍后再试');e.status=r.status;throw e}return data}
+function action(id,fn){$(id).addEventListener('click',async()=>{const b=$(id);b.disabled=true;try{await fn()}catch(e){toast(e.message)}finally{b.disabled=false}})}
+function node(tag,text,className){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(className)el.className=className;return el}
+function show(view){$('hero').hidden=true;$('studio').hidden=false;document.body.dataset.screen=view;$('mobile-title').textContent=view==='maker'?'上传与选择':view==='progress-view'?'制作表情包':'领取小心情';for(const id of ['maker','progress-view','result-view'])$(id).hidden=id!==view;$('step-badge').textContent=view==='maker'?'01 / 上传与选择':view==='progress-view'?'02 / 制作中':'03 / 领取小心情'}
+function renderMe(){ $('account-button').textContent='⚙ 设置';$('auth-form').hidden=!!me.email;$('account-details').hidden=!me.email;$('account-email').textContent=me.email||'';$('account-balance').textContent=me.pack_balance;$('quota-copy').textContent=me.trial_available?'首次体验，免费挑两张。':`可用制作次数：${me.pack_balance} 套`;
+$('product-list').replaceChildren();for(const p of catalog.products.filter(p=>p.packs)){const row=node('div',undefined,'product-row');const details=node('div',undefined,'product-benefits');details.append(node('strong',p.name),node('small',p.description),node('span',`参考价 $${(p.usd_minor/100).toFixed(2)} · 中国地区同数额人民币`));row.append(details);const b=node('button',p.available?'购买':'价格待配置','button secondary');b.disabled=!p.available;b.onclick=()=>checkout(p.id).catch(e=>toast(e.message));row.append(b);$('product-list').append(row)}}
+async function init(){try{catalog=await api('/catalog');me=catalog.me;style=catalog.styles[0].id;$('demo-unlock').hidden=!me.demo;renderMe();for(const s of catalog.styles){const b=node('button',undefined,'style-card'+(s.id===style?' active':''));b.setAttribute('aria-pressed',s.id===style);const im=node('div',undefined,'style-image');im.style.backgroundImage=`url('/sticker/assets/style-samples/style-${s.sample_quadrant+1}.png')`;b.append(im,node('span','样例','sample-badge'),node('span',s.name,'style-name'),node('span','✓','tick'));b.onclick=()=>{style=s.id;requestId=null;document.querySelectorAll('.style-card').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',x===b)})};$('style-options').append(b)}for(const e of catalog.theme.expressions)$('emotion-chips').append(node('span',`${e.icon||'♡'} ${e.name||e.emotion}`,'emotion-chip'));
+if(catalog.calibration.enabled){$('calibration-option').hidden=false;$('calibration-copy').textContent=`可选：同意将本次照片与结果用于提示词校准。仅收集前 ${catalog.calibration.limit} 份同意的成功案例，最多保留 ${catalog.calibration.days} 天，可随时撤回。`}
+const p=catalog.products.find(p=>p.id==='FIRST_PACK_UNLOCK');$('unlock-price').textContent=p.available?`参考价 $${(p.usd_minor/100).toFixed(2)} · 以结账页为准`:'价格待配置 · 暂不开放真实付款';$('unlock-button').disabled=!p.available;
+const ref=new URLSearchParams(location.search).get('ref');if(ref)saved('emjo-ref',ref);const jid=saved('emjo-job');if(jid){try{job=await api('/generations/'+jid);restoreResult();$('resume-result').hidden=job.state!=='READY';if(['QUEUED','GENERATING','PROCESSING'].includes(job.state))await poll()}catch{saved('emjo-job','')}}
+if(new URLSearchParams(location.search).has('_ptxn'))initPaddle();}catch(e){$('connection-error').hidden=false;$('connection-error').textContent='小画室暂时没有连接成功。请稍后刷新页面再试。';toast(e.message)}}
+let paddleReady;
+function initPaddle(){if(paddleReady)return paddleReady;paddleReady=new Promise((resolve,reject)=>{if(!catalog.paddle.clientToken){reject(new Error('支付配置尚未完成'));return}const s=document.createElement('script');s.src='https://cdn.paddle.com/paddle/v2/paddle.js';s.onerror=()=>{paddleReady=null;reject(new Error('支付页面加载失败，请重试'))};s.onload=()=>{if(catalog.paddle.environment==='sandbox')Paddle.Environment.set('sandbox');Paddle.Initialize({token:catalog.paddle.clientToken,eventCallback:async e=>{if(e.name==='checkout.completed'){toast('正在核对支付结果，请稍候');if(job)poll();for(let i=0;i<10;i++){me=await api('/me');renderMe();if((await api('/orders/'+saved('emjo-order'))).state==='PAID')break;await new Promise(r=>setTimeout(r,2000))}}}});resolve()};document.head.append(s)});return paddleReady}
+async function addPhotos(files){if(!files.length)return;if((replacePending?0:photos.length)+files.length>3)throw new Error('最多放入三张照片，请先移除不需要的照片');for(const f of files){if(!['image/jpeg','image/png','image/webp'].includes(f.type))throw new Error('请上传 JPG、PNG 或 WebP');if(f.size>15*1024*1024)throw new Error('每张照片请小于 15 MB')}if(replacePending){photos=[];cropBlob=null;replacePending=false}photos.push(...files);requestId=null;await renderPhotos()}
+let previewURL,replacePending=false;
+async function renderPhotos(){if(previewURL)URL.revokeObjectURL(previewURL);$('upload-empty').hidden=!!photos.length;$('main-photo').hidden=!photos.length;$('photo-label').hidden=!photos.length;$('photo-actions').hidden=!photos.length;$('generate-button').disabled=!photos.length;$('next-style').disabled=!photos.length;$('add-photo-button').hidden=photos.length>=3;if(photos.length){previewURL=URL.createObjectURL(cropBlob||photos[0]);$('main-photo').src=previewURL}$('file-list').replaceChildren();photos.forEach((f,i)=>{const row=node('div',undefined,'file-row');row.append(node('span',`${i+1===1?'主参考':'补充参考 '+(i+1)} · ${f.name}`));const b=node('button','移除');b.onclick=()=>{photos.splice(i,1);if(i===0)cropBlob=null;requestId=null;renderPhotos()};row.append(b);$('file-list').append(row)})}
+$('photos').onchange=async e=>{try{await addPhotos([...e.target.files])}catch(e){toast(e.message)}finally{$('photos').value='';replacePending=false}};
+$('replace-button').onclick=()=>{replacePending=true;$('photos').click()};
+$('add-photo-button').onclick=()=>{replacePending=false;$('photos').click()};
+$('photos').addEventListener('cancel',()=>replacePending=false);
+$('upload-zone').addEventListener('click',e=>{if(e.target!==$('photos'))replacePending=false});
+for(const ev of ['dragenter','dragover'])$('upload-zone').addEventListener(ev,e=>{e.preventDefault();$('upload-zone').classList.add('dragging')});$('upload-zone').ondragleave=()=>$('upload-zone').classList.remove('dragging');$('upload-zone').ondrop=async e=>{e.preventDefault();$('upload-zone').classList.remove('dragging');try{await addPhotos([...e.dataTransfer.files])}catch(e){toast(e.message)}};
+async function compress(file){const img=await createImageBitmap(file);if(img.width*img.height>40000000){img.close();throw new Error('照片尺寸过大，请使用 4000 万像素以内的图片')}const c=document.createElement('canvas'),r=Math.min(1,2048/Math.max(img.width,img.height));c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);img.close();return new Promise(resolve=>c.toBlob(resolve,'image/jpeg',.92))}
+action('generate-button',async()=>{if(!photos.length)return;if(!me.trial_available&&!me.pack_balance){$('account-dialog').showModal();return}requestId=requestId||crypto.randomUUID();const fd=new FormData();for(let i=0;i<photos.length;i++)fd.append('photos',await compress(i===0&&cropBlob?cropBlob:photos[i]),`reference-${i+1}.jpg`);fd.append('request_id',requestId);fd.append('style',style);for(const k of ['captions','accessories'])fd.append(k,$(k).checked);fd.append('calibration_consent',$('calibration-consent').checked);job=await api('/generations',fd);selection.clear();revealed.clear();saved('emjo-job',job.id);show('progress-view');$('studio').scrollIntoView();await poll()});
+async function poll(){clearTimeout(pollTimer);pollTimer=null;try{job=await api('/generations/'+job.id);await displayJob();if(['QUEUED','GENERATING','PROCESSING'].includes(job.state))pollTimer=setTimeout(poll,1700)}catch(e){toast(e.message);pollTimer=setTimeout(poll,5000)}}
+async function displayJob(){if(job.state==='READY'){show('result-view');renderResult();me=await api('/me');renderMe()}else if(['QUEUED','GENERATING','PROCESSING'].includes(job.state)){show('progress-view');$('progress-title').textContent={QUEUED:'小画室已收到照片',GENERATING:'正在画出九种心情',PROCESSING:'正在整理透明贴纸'}[job.state];$('progress-copy').textContent=job.demo?'这是固定样例制作演示，不会根据上传照片生成。':'不用反复点击，完成后会自动出现。';['stage-1','stage-2','stage-3'].forEach((id,i)=>$(id).classList.toggle('active',i<({QUEUED:1,GENERATING:2,PROCESSING:3}[job.state])))}else{show('maker');toast(job.error||(job.state==='EXPIRED'?'这份心情已过期，请使用已保存的副本。':'作品暂时无法领取'));saved('emjo-job','');requestId=null;me=await api('/me');renderMe()}}
+function restoreResult(){try{const v=JSON.parse(saved('emjo-reveal-'+job.id)||'[]');revealed=new Set(v)}catch{revealed=new Set()}selection=new Set(job.selected||[])}
+function persistReveal(){saved('emjo-reveal-'+job.id,JSON.stringify([...revealed]))}
+function renderResult(){if(job.selected?.length)selection=new Set(job.selected);$('result-grid').replaceChildren();for(const e of job.cells||catalog.theme.expressions){const i=e.cell_index,open=revealed.has(i)||job.unlocked||job.selected.includes(i),allowed=job.unlocked||job.selected.includes(i);const card=node('article',undefined,'sticker-card'+(selection.has(i)?' selected':''));card.dataset.cell=i;const picture=node('button',undefined,'sticker-picture');picture.setAttribute('aria-label',open?`${e.name||e.emotion}预览`:`拆开${e.name||e.emotion}`);const flipper=node('span',undefined,'card-flipper'+(open?' is-revealed':''));const back=node('span',undefined,'card-face card-back');const seal=node('span',undefined,'sealed');seal.append(node('span','✦','seal-symbol'),node('span',e.emotion,'seal-text'),node('small','点击翻开'));back.append(node('span',`0${i}`,'card-number'),seal,node('span','给你的一点小惊喜','card-whisper'));const front=node('span',undefined,'card-face card-front');const im=node('img');im.src=API+`/files/${job.id}/${allowed?'sticker-'+i+'.png':'preview-'+i+'.jpg'}?v=2`;im.alt=`${e.label} · ${allowed?'512×512透明贴纸':'带背景水印预览'}`;front.classList.toggle('transparent-master',allowed);front.append(im);front.setAttribute('aria-hidden',!open);back.setAttribute('aria-hidden',open);flipper.append(back,front);picture.append(flipper);picture.onclick=()=>{if(!open)return revealCell(i);if(allowed)return openShare(i).catch(e=>toast(e.message));if(!job.selected.length){if(selection.has(i))selection.delete(i);else if(selection.size<2)selection.add(i);else return toast("先取消一张，再换选");renderResult()}else toast("解锁整套后可以分享这张")};card.append(picture);const badge=node('span',allowed?'↗':selection.has(i)?'✓':'🔒','card-status');badge.setAttribute('aria-label',allowed?'已解锁，点击分享':selection.has(i)?'已选':'未解锁');card.append(badge);$('result-grid').append(card)}$('claim-area').hidden=job.unlocked;$('claim-button').hidden=!!job.selected.length;$('claim-button').disabled=selection.size!==2;$('selection-copy').textContent=job.selected.length?'点已解锁贴纸，即可下载或分享':`翻开后再点选 · 免费选 ${selection.size}/2 张`;$('unlock-area').hidden=job.unlocked;$('delivery-area').hidden=!job.unlocked;$('withdraw-calibration').hidden=!job.calibration;$('expiry-copy').textContent=`保存到 ${new Date(job.expires*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})} · 到期后自动清理`;$('result-description').textContent=job.demo?'样例体验 · 翻开看看小惊喜':'点开小卡片，遇见九个不同的 TA。'}
+let revealBusy=new Set(),revealTimers=[];
+function revealCell(i){
+ if(!job||revealed.has(i)||job.unlocked||job.selected.includes(i)||revealBusy.has(i))return;
+ const card=document.querySelector(`.sticker-card[data-cell="${i}"]`);if(!card)return;
+ revealBusy.add(i);revealed.add(i);persistReveal();
+ const flipper=card.querySelector('.card-flipper');flipper.classList.add('is-revealed');card.classList.add('just-revealed');
+ card.querySelector('.card-front').setAttribute('aria-hidden','false');card.querySelector('.card-back').setAttribute('aria-hidden','true');
+ card.querySelector('.sticker-picture').setAttribute('aria-label',`${(job.cells||catalog.theme.expressions)[i-1].emotion}预览`);
+ const sparkle=node('span',undefined,'reveal-sparkles');for(let k=0;k<7;k++){const star=node('i',k%2?'✧':'✦');star.style.setProperty('--k',k);sparkle.append(star)}card.querySelector('.sticker-picture').append(sparkle);
+ setTimeout(()=>{card.querySelector('.sticker-picture').onclick=()=>{renderResult();document.querySelector(`.sticker-card[data-cell="${i}"] .sticker-picture`)?.click()};const b=card.querySelector('.select-cell');if(b&&!job.selected.length){b.hidden=false;b.disabled=false;}card.classList.remove('just-revealed');sparkle.remove();revealBusy.delete(i)},850);
+}
+$('reveal-all').onclick=()=>{revealTimers.forEach(clearTimeout);revealTimers=[];let n=0;for(let i=1;i<=9;i++)if(!revealed.has(i))revealTimers.push(setTimeout(()=>revealCell(i),n++*160));};$('claim-button').onclick=()=>{$('confirm-copy').textContent='你选中了：'+catalog.theme.expressions.filter(e=>selection.has(e.cell_index)).map(e=>e.label).join('、');$('confirm-dialog').showModal()};action('confirm-claim',async()=>{job=await api(`/generations/${job.id}/claim`,{cells:[...selection]});job=await api('/generations/'+job.id);$('confirm-dialog').close();renderResult();toast('这两种小心情，正式属于你啦。')});
+async function download(name,share=false){if(!share){const link=node('a');link.href=API+`/files/${job.id}/${name}`;link.download=name;document.body.append(link);link.click();link.remove();return}const r=await fetch(API+`/files/${job.id}/${name}`,{credentials:'include'});if(!r.ok){let d=await r.json();throw new Error(d.error)}const blob=await r.blob();const file=new File([blob],name,{type:blob.type});if(share&&navigator.canShare?.({files:[file]})){try{await navigator.share({files:[file],title:'我的小心情'})}catch(e){if(e.name!=='AbortError')throw e}return}const url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);if(share)toast('已下载透明图片，可从聊天软件选择文件发送。')}
+action('zip-button',()=>download('stickers.zip'));action('grid-button',()=>download('grid.png'));action('demo-unlock',async()=>{job=await api('/demo/unlock/'+job.id,{});renderResult();toast('已解锁固定样例；没有产生付款。')});
+async function checkout(product){if(!me.email){pendingUnlock=product==='FIRST_PACK_UNLOCK';$('account-dialog').showModal();return}const result=await api('/checkout',{product,generation_id:product==='FIRST_PACK_UNLOCK'?job?.id:null});saved('emjo-order',result.order_id);await initPaddle();$('account-dialog').close();Paddle.Checkout.open({items:result.items,customData:result.customData,customer:result.customer,settings:{displayMode:'overlay',locale:document.documentElement.lang==='zh-CN'?'zh-Hans':'en'}})}
+action('unlock-button',()=>checkout('FIRST_PACK_UNLOCK'));$('account-button').onclick=()=>$('account-dialog').showModal();action('send-code',async()=>{const result=await api('/auth/code',{email:$('email-input').value});$('code-hint').textContent=result.demo_code?`本地样例验证码：${result.demo_code}（不会发送邮件）`:'验证码已发送，请检查收件箱和垃圾邮件。'});action('verify-code',async()=>{me=await api('/auth/verify',{email:$('email-input').value,code:$('code-input').value,referral:saved('emjo-ref')||null});renderMe();toast('邮箱已验证');if(pendingUnlock){pendingUnlock=false;$('account-dialog').close();await checkout('FIRST_PACK_UNLOCK')}});action('logout-button',async()=>{await api('/auth/logout',{});me=await api('/me');renderMe();$('account-dialog').close();if(job){job=null;show('maker');saved('emjo-job','')}});action('copy-invite',async()=>{const url=new URL('/sticker/',location.origin);url.searchParams.set('ref',me.referral_code);await navigator.clipboard.writeText(url.href);toast('邀请链接已复制，发给喜欢小表情的朋友吧。')});$('start-again').onclick=()=>{show('maker');requestId=null;$('studio').scrollIntoView();if(!me.trial_available&&!me.pack_balance)toast('首次体验已用过，可通过购买或邀请获得制作次数。')};action('withdraw-calibration',async()=>{await api(`/generations/${job.id}/calibration`,null,'DELETE');job.calibration=false;renderResult();toast('校准授权已撤回，校准副本已安排删除。')});$('privacy-button').onclick=()=>$('privacy-dialog').showModal();document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
+// Optional crop: the original remains the default. Crop only affects the first reference.
+let cropImage,cropRatio=1,zoom=1,offset={x:0,y:0},drag;
+const canvas=$('crop-canvas'),ctx=canvas.getContext('2d');
+function drawCrop(){if(!cropImage)return;canvas.width=420;canvas.height=Math.round(420/cropRatio);const scale=Math.max(canvas.width/cropImage.width,canvas.height/cropImage.height)*zoom;const w=cropImage.width*scale,h=cropImage.height*scale;offset.x=Math.max(-(w-canvas.width)/2,Math.min((w-canvas.width)/2,offset.x));offset.y=Math.max(-(h-canvas.height)/2,Math.min((h-canvas.height)/2,offset.y));ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(cropImage,(canvas.width-w)/2+offset.x,(canvas.height-h)/2+offset.y,w,h);ctx.strokeStyle='#ffffff88';ctx.lineWidth=1;for(let i=1;i<3;i++){ctx.beginPath();ctx.moveTo(i*canvas.width/3,0);ctx.lineTo(i*canvas.width/3,canvas.height);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i*canvas.height/3);ctx.lineTo(canvas.width,i*canvas.height/3);ctx.stroke()}}
+action('crop-button',async()=>{cropImage?.close();cropImage=await createImageBitmap(photos[0]);zoom=1;offset={x:0,y:0};$('crop-zoom').value=1;drawCrop();$('crop-dialog').showModal()});document.querySelectorAll('[data-ratio]').forEach(b=>b.onclick=()=>{cropRatio=Number(b.dataset.ratio);zoom=1;offset={x:0,y:0};$('crop-zoom').value=1;document.querySelectorAll('[data-ratio]').forEach(x=>x.classList.toggle('active',x===b));drawCrop()});$('crop-zoom').oninput=e=>{zoom=Number(e.target.value);drawCrop()};canvas.onpointerdown=e=>{drag={x:e.clientX,y:e.clientY,ox:offset.x,oy:offset.y};canvas.setPointerCapture(e.pointerId)};canvas.onpointermove=e=>{if(!drag)return;const ratio=canvas.width/canvas.getBoundingClientRect().width;offset={x:drag.ox+(e.clientX-drag.x)*ratio,y:drag.oy+(e.clientY-drag.y)*ratio};drawCrop()};canvas.onpointerup=canvas.onpointercancel=()=>drag=null;
+action('crop-save',async()=>{const out=document.createElement('canvas');out.width=1536;out.height=Math.round(1536/cropRatio);const c=out.getContext('2d'),scale=Math.max(canvas.width/cropImage.width,canvas.height/cropImage.height)*zoom,f=out.width/canvas.width;c.fillStyle='#fff';c.fillRect(0,0,out.width,out.height);c.drawImage(cropImage,((canvas.width-cropImage.width*scale)/2+offset.x)*f,((canvas.height-cropImage.height*scale)/2+offset.y)*f,cropImage.width*scale*f,cropImage.height*scale*f);cropBlob=await new Promise(r=>out.toBlob(r,'image/jpeg',.94));requestId=null;await renderPhotos();$('crop-dialog').close()});$('crop-reset').onclick=()=>{cropBlob=null;requestId=null;renderPhotos();$('crop-dialog').close()};for(const id of ['captions','accessories','calibration-consent'])$(id).onchange=()=>requestId=null;
+init();
 
-(() => {
-  // 【MODIFIED】 Fixed V1 style catalog shared by the sample style picker.
-  const styles = [
-    ['A', 'Soft Kawaii Chibi', 'Rounded paws, a little bigger eyes, and an extra dose of sweetness.'],
-    ['B', 'Bold Cartoon Sticker', 'Confident outlines and expressive shapes that pop in every chat.'],
-    ['C', 'Cute Semi-Realistic', 'Their familiar face and beautiful markings, softly illustrated.'],
-    ['D', 'Storybook Watercolor', 'Gentle brushstrokes and the warmth of a favorite picture book.']
-  ];
+// Mobile H5 screens; a wide browser keeps the same phone-sized composition.
+document.body.dataset.screen='home';
+$('mobile-start').onclick=()=>{makerStep('upload');show('maker');window.scrollTo({top:0,behavior:'instant'})};
+$('mobile-back').onclick=()=>{if(document.body.dataset.screen==='home')return;$('hero').hidden=false;$('studio').hidden=true;document.body.dataset.screen='home';$('mobile-title').textContent='自助表情包生成器';window.scrollTo({top:0,behavior:'instant'})};
 
-  const $ = (selector) => document.querySelector(selector);
+$('resume-result').onclick=async()=>{try{await displayJob();window.scrollTo({top:0,behavior:'instant'})}catch(e){toast(e.message)}};
 
-  let pet = 'cat';
-  let photo = null;
-  let objectUrl = null;
-  let sampleStage = 0;
-  let style = 'A';
+function makerStep(step){$('maker').dataset.step=step;$('flow-upload').classList.toggle('active',step==='upload');$('flow-style').classList.toggle('active',step==='style');$('studio-title').textContent=step==='upload'?'上传你喜欢的照片':'选一种喜欢的画风';window.scrollTo({top:0,behavior:'instant'})}
+$('next-style').onclick=()=>{if(photos.length)makerStep('style')};
+$('back-upload').onclick=()=>makerStep('upload');
 
-  // 【MODIFIED】 Hero carousel state is kept local to this module.
-  let heroSlide = 0;
-  let heroTimer = null;
-  let heroResumeTimer = null;
-  let touchStartX = null;
-
-  /**
-   * Function responsibility:
-   * - Build one visual quadrant from the supplied 2×2 style reference image.
-   * Input:
-   * - species: "cat" or "dog".
-   * - index: zero-based quadrant index.
-   * Output / side effects:
-   * - Returns HTML only; does not mutate global state or DOM.
-   */
-  function art(species, index) {
-    return `<div class="style-art quadrant-${index + 1}">
-      <img src="assets/${species}-styles.png" alt="${styles[index][1]} ${species} illustration" loading="lazy">
-      <span class="style-letter">${styles[index][0]}</span>
-    </div>`;
-  }
-
-  /**
-   * Function responsibility:
-   * - Highlight one progress step in the creator workflow.
-   * Input:
-   * - index: zero-based progress step.
-   * Output / side effects:
-   * - Updates .progress DOM classes only.
-   */
-  function setProgress(index) {
-    document.querySelectorAll('.progress li').forEach((item, i) => {
-      item.classList.toggle('current', index === i);
-    });
-  }
-
-  /**
-   * Function responsibility:
-   * - Render the requested hero carousel slide and accessibility state.
-   * Input:
-   * - index: requested slide index.
-   * - isManual: whether a user action initiated the change.
-   * Output / side effects:
-   * - Updates hero slide visibility, carousel dots, and carousel timing.
-   */
-  function showHeroSlide(index, isManual = false) {
-    const slides = [...document.querySelectorAll('.carousel-slide')];
-    const dots = [...document.querySelectorAll('[data-carousel-dot]')];
-    if (!slides.length) return;
-
-    heroSlide = (index + slides.length) % slides.length;
-
-    slides.forEach((slide, i) => {
-      const active = i === heroSlide;
-      slide.classList.toggle('is-active', active);
-      slide.setAttribute('aria-hidden', String(!active));
-    });
-
-    dots.forEach((dot, i) => {
-      const active = i === heroSlide;
-      dot.classList.toggle('is-active', active);
-      dot.setAttribute('aria-selected', String(active));
-    });
-
-    if (isManual) pauseHeroAutoplay(12000);
-  }
-
-  /**
-   * Function responsibility:
-   * - Stop existing hero carousel timers.
-   * Input:
-   * - resumeAfterMs: optional delay before autoplay restarts.
-   * Output / side effects:
-   * - Clears and optionally schedules module-level carousel timers.
-   */
-  function pauseHeroAutoplay(resumeAfterMs = 0) {
-    if (heroTimer) {
-      window.clearInterval(heroTimer);
-      heroTimer = null;
-    }
-
-    if (heroResumeTimer) {
-      window.clearTimeout(heroResumeTimer);
-      heroResumeTimer = null;
-    }
-
-    if (resumeAfterMs > 0 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      heroResumeTimer = window.setTimeout(startHeroAutoplay, resumeAfterMs);
-    }
-  }
-
-  /**
-   * Function responsibility:
-   * - Start the six-second hero sample rotation.
-   * Input:
-   * - None.
-   * Output / side effects:
-   * - Creates one module-level interval unless reduced motion is requested.
-   */
-  function startHeroAutoplay() {
-    if (!$('#heroCarousel') || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    pauseHeroAutoplay();
-    heroTimer = window.setInterval(() => showHeroSlide(heroSlide + 1, false), 6000);
-  }
-
-  /**
-   * Function responsibility:
-   * - Configure buttons, hover/focus pause, and swipe behavior for the hero carousel.
-   * Input:
-   * - None.
-   * Output / side effects:
-   * - Adds event listeners to hero carousel DOM and starts autoplay.
-   */
-  function initHeroCarousel() {
-    const carousel = $('#heroCarousel');
-    if (!carousel) return;
-
-    $('#heroPrev')?.addEventListener('click', () => showHeroSlide(heroSlide - 1, true));
-    $('#heroNext')?.addEventListener('click', () => showHeroSlide(heroSlide + 1, true));
-
-    document.querySelectorAll('[data-carousel-dot]').forEach((dot) => {
-      dot.addEventListener('click', () => showHeroSlide(Number(dot.dataset.carouselDot), true));
-    });
-
-    carousel.addEventListener('mouseenter', () => pauseHeroAutoplay());
-    carousel.addEventListener('mouseleave', startHeroAutoplay);
-    carousel.addEventListener('focusin', () => pauseHeroAutoplay());
-    carousel.addEventListener('focusout', startHeroAutoplay);
-
-    carousel.addEventListener('touchstart', (event) => {
-      touchStartX = event.changedTouches[0]?.clientX ?? null;
-    }, { passive: true });
-
-    carousel.addEventListener('touchend', (event) => {
-      if (touchStartX === null) return;
-      const touchEndX = event.changedTouches[0]?.clientX ?? touchStartX;
-      const delta = touchEndX - touchStartX;
-      touchStartX = null;
-      if (Math.abs(delta) < 45) return;
-      showHeroSlide(heroSlide + (delta < 0 ? 1 : -1), true);
-    }, { passive: true });
-
-    showHeroSlide(0, false);
-    startHeroAutoplay();
-  }
-
-  /**
-   * Function responsibility:
-   * - Restore the creator result panel to the selected pet/photo starting state.
-   * Input:
-   * - None; reads module-level pet/photo/objectUrl.
-   * Output / side effects:
-   * - Resets creator DOM, sample state, watermark, checkout and progress.
-   */
-  function resetResult() {
-    sampleStage = 0;
-
-    const sampleStyles = $('#sampleStyles');
-    const checkoutPanel = $('#checkoutPanel');
-    const watermark = $('#watermark');
-    const resultCanvas = $('#resultCanvas');
-    const resultImage = $('#resultImage');
-    const previewButton = $('#previewButton');
-
-    if (!sampleStyles || !checkoutPanel || !watermark || !resultCanvas || !resultImage || !previewButton) return;
-
-    sampleStyles.hidden = true;
-    checkoutPanel.hidden = true;
-    watermark.hidden = true;
-    resultCanvas.hidden = false;
-    resultCanvas.classList.toggle('photo', Boolean(photo));
-
-    resultImage.src = photo ? objectUrl : `assets/${pet}-grid.png`;
-    resultImage.alt = photo ? 'Your selected pet photo' : `Sample ${pet} sticker pack`;
-
-    if ($('#resultLabel')) $('#resultLabel').textContent = photo ? 'YOUR PHOTO' : 'A LITTLE INSPIRATION';
-    if ($('#resultTitle')) $('#resultTitle').textContent = photo ? 'A lovely place to start.' : 'Their face. Your new favorite reply.';
-    if ($('#resultDescription')) {
-      $('#resultDescription').textContent = photo
-        ? 'Your photo is selected and stays in this browser until generation is available.'
-        : 'Nine little ways to say hello, thank you, or “I need a hug.”';
-    }
-
-    previewButton.innerHTML = 'Create my free preview <span>↗</span>';
-    setProgress(0);
-  }
-
-  /**
-   * Function responsibility:
-   * - Validate and locally preview a user-selected pet photo.
-   * Input:
-   * - file: File object from input or drag-and-drop.
-   * Output / side effects:
-   * - Updates module-level photo/objectUrl and creator DOM; no upload occurs.
-   */
-  async function selectPhoto(file) {
-    if (!file) return;
-    const status = $('#formStatus');
-
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      if (status) status.textContent = 'Please choose a JPG, PNG or WebP photo.';
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      if (status) status.textContent = 'Please choose a photo smaller than 10 MB.';
-      return;
-    }
-
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    image.src = url;
-
-    try {
-      await image.decode();
-    } catch {
-      URL.revokeObjectURL(url);
-      if (status) status.textContent = 'We couldn’t read that image. Please try another photo.';
-      return;
-    }
-
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-    objectUrl = url;
-    photo = file;
-
-    const uploadTitle = $('#uploadBox strong');
-    if (uploadTitle) uploadTitle.textContent = file.name;
-    if (status) status.textContent = 'Photo selected. You can replace it anytime before creating a preview.';
-    resetResult();
-  }
-
-  /**
-   * Function responsibility:
-   * - Render the four fixed art styles in the sample workflow.
-   * Input:
-   * - None; reads module-level pet.
-   * Output / side effects:
-   * - Populates #sampleStyles, updates creator labels, progress and sample stage.
-   */
-  function showSampleStyles() {
-    const sampleStyles = $('#sampleStyles');
-    const resultCanvas = $('#resultCanvas');
-    const checkoutPanel = $('#checkoutPanel');
-    if (!sampleStyles || !resultCanvas || !checkoutPanel) return;
-
-    sampleStage = 1;
-    style = 'A';
-    resultCanvas.hidden = true;
-    checkoutPanel.hidden = true;
-    sampleStyles.hidden = false;
-
-    sampleStyles.innerHTML = styles.map((item, index) => `
-      <button type="button" data-style="${item[0]}" aria-pressed="${index === 0}" class="${index === 0 ? 'active' : ''}">
-        ${art(pet, index)}
-        <span>${item[0]} · ${item[1]}</span>
-      </button>
-    `).join('');
-
-    sampleStyles.querySelectorAll('button').forEach((button) => {
-      button.addEventListener('click', () => {
-        style = button.dataset.style;
-        sampleStyles.querySelectorAll('button').forEach((item) => {
-          const active = item === button;
-          item.classList.toggle('active', active);
-          item.setAttribute('aria-pressed', String(active));
-        });
-      });
-    });
-
-    $('#resultLabel').textContent = 'EXPLORE THE SAMPLE · FOUR STYLES';
-    $('#resultTitle').textContent = 'Which one feels like them?';
-    $('#resultDescription').textContent = 'These sample styles show how the same pet can feel different without losing their identity.';
-    $('#previewButton').innerHTML = 'See a sample nine-sticker pack <span>↗</span>';
-    setProgress(1);
-  }
-
-  /**
-   * Function responsibility:
-   * - Configure creator pet toggles, local upload, drag/drop and demo sample controls.
-   * Input:
-   * - None.
-   * Output / side effects:
-   * - Adds event listeners and updates the creator DOM/module state.
-   */
-  function initCreator() {
-    document.querySelectorAll('[data-pet]').forEach((button) => {
-      button.addEventListener('click', () => {
-        pet = button.dataset.pet;
-        document.querySelectorAll('[data-pet]').forEach((item) => {
-          const active = item === button;
-          item.classList.toggle('active', active);
-          item.setAttribute('aria-pressed', String(active));
-        });
-        resetResult();
-      });
-    });
-
-    $('#photoInput')?.addEventListener('change', (event) => selectPhoto(event.target.files[0]));
-
-    const uploadBox = $('#uploadBox');
-    if (uploadBox) {
-      ['dragenter', 'dragover'].forEach((name) => {
-        uploadBox.addEventListener(name, (event) => {
-          event.preventDefault();
-          uploadBox.classList.add('dragging');
-        });
-      });
-
-      ['dragleave', 'drop'].forEach((name) => {
-        uploadBox.addEventListener(name, (event) => {
-          event.preventDefault();
-          uploadBox.classList.remove('dragging');
-        });
-      });
-
-      uploadBox.addEventListener('drop', (event) => selectPhoto(event.dataTransfer.files[0]));
-    }
-
-    $('#sampleButton')?.addEventListener('click', showSampleStyles);
-
-    $('#previewButton')?.addEventListener('click', () => {
-      if (sampleStage === 1) {
-        sampleStage = 2;
-        $('#sampleStyles').hidden = true;
-        $('#resultCanvas').hidden = false;
-        $('#resultCanvas').classList.remove('photo');
-        $('#resultImage').src = `assets/${pet}-grid.png`;
-        $('#resultImage').alt = `Supplied sample ${pet} nine-sticker pack`;
-        $('#watermark').hidden = false;
-        $('#checkoutPanel').hidden = false;
-        $('#resultLabel').textContent = 'SAMPLE PACK · WATERMARKED PREVIEW';
-        $('#resultTitle').textContent = 'Nine little reasons to smile.';
-        $('#resultDescription').textContent = `You selected style ${style}. This sample shows the final pack stage before payment.`;
-        $('#previewButton').innerHTML = 'Back to my photo <span>↗</span>';
-        setProgress(2);
-        return;
-      }
-
-      if (sampleStage === 2) {
-        resetResult();
-        return;
-      }
-
-      if (!photo) {
-        $('#photoInput')?.click();
-        return;
-      }
-
-      const status = $('#formStatus');
-      if (status) status.textContent = 'Custom previews are coming soon. Your photo has not been uploaded or charged.';
-    });
-  }
-
-  // 【MODIFIED】 Initialize independent UI features after the document has been parsed.
-  initHeroCarousel();
-  initCreator();
-  resetResult();
-
-  // 【MODIFIED】 Revoke the local object URL when leaving the page to avoid leaking browser memory.
-  window.addEventListener('beforeunload', () => {
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-  });
-})();
+let shareCell=null,shareData=null,shareFile=null,shareRequest=0;
+async function openShare(cell){shareCell=cell;$('share-dialog').showModal();await prepareShare()}
+async function prepareShare(){
+ const request=++shareRequest;shareData=null;shareFile=null;
+ for(const id of ['copy-share','native-share','whatsapp-share','save-share'])$(id).disabled=true;
+ $('share-status').textContent='正在准备透明单张…';
+ try{
+  const variant=$('share-format').value;
+  const data=await api(`/generations/${job.id}/share`,{cell:shareCell,variant});
+  const response=await fetch(API+`/files/${job.id}/${data.name}`,{credentials:'include'});if(!response.ok)throw new Error('贴纸已失效，请刷新作品');
+  const blob=await response.blob();if(request!==shareRequest)return;
+  shareData=data;shareFile=new File([blob],data.name,{type:blob.type});
+  $('share-status').textContent=data.local_only?'本地测试链接：仅本机可访问，正式部署后才能发给朋友。':`持链接者可下载这张贴纸；有效至 ${new Date(data.expires*1000).toLocaleString('zh-CN')}。`;
+  $('share-url').value=data.url;
+  for(const id of ['copy-share','native-share','save-share'])$(id).disabled=false;
+  $('whatsapp-share').disabled=data.local_only;
+ }catch(e){$('share-status').textContent=e.message}
+}
+$('share-format').onchange=prepareShare;
+action('copy-share',async()=>{if(!shareData)return;await navigator.clipboard.writeText(shareData.url);toast(shareData.local_only?'已复制本地测试链接，仅本机可用':'分享链接已复制')});
+action('save-share',async()=>{if(shareData)await download(shareData.name)});
+$('native-share').onclick=async()=>{try{if(!shareFile)return;if(navigator.canShare?.({files:[shareFile]}))await navigator.share({files:[shareFile],title:'送你一张小表情'});else{await download(shareData.name);toast('此浏览器不支持文件分享，已下载；请在 iMessage 或微信中发送文件。')}}catch(e){if(e.name!=='AbortError')toast('系统分享未完成，可下载后发送')}};
+$('whatsapp-share').onclick=()=>{if(!shareData||shareData.local_only)return;window.open('https://wa.me/?text='+encodeURIComponent('送你一张小表情：'+shareData.url),'_blank','noopener,noreferrer')};
