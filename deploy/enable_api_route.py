@@ -29,5 +29,5 @@ if marker not in original:
     subprocess.run(['systemctl','reload','nginx'],check=True)
 else:subprocess.run(['nginx','-t'],check=True)
 subprocess.run(['systemctl','restart','emjo.service'],check=True)
-subprocess.run(['curl','--fail','--silent','--retry','5','--retry-delay','2','--output','/dev/null','http://127.0.0.1:8013/sticker/api/catalog'],check=True)
+subprocess.run(['curl','--fail','--silent','--retry-connrefused','--retry','5','--retry-delay','2','--output','/dev/null','http://127.0.0.1:8013/sticker/api/catalog'],check=True)
 print('Sticker API route enabled. Only emjo restarted; existing APIs retained.')

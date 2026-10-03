@@ -121,3 +121,7 @@ python3 -m pytest tests -q
 用户已确认采用 `/sticker/`，支持宝宝和宠物，不再使用 pet 名称。官网仅发布前端允许清单；后端独立在8013端口。正式 API 为 `https://api.wisteriasoftware.uk/sticker/api`，只允许官网来源携带会话访问。分享和邮件链接使用 API 域名。
 支付使用 Paddle.js items + customData（服务器订单ID），现有只读密钥已验证可读取交易（HTTP200）。不新增交易写权限；签名验证、价格商品核对、重复通知、退款和邮件均由后端处理。真实成交仍需用户付款测试。
 价格采用用户提供的 1/3/5 套 ID；9/27/45张，USD/CNY分别6.99/19.99/29.99，以Paddle实际结账为准。
+
+### 已发布检查（2026-10-03）
+EMJO GitHub main 已同步；官网源码从独立工作树仅新增 sticker 产品目录，官网同步与 Cloudflare Pages/GitHub Pages 均成功。公网首页及 API 返回200，CORS允许官网携带会话；无签名支付通知返回401。Paddle目标已保存为 API 正式地址，Active，仅transaction.completed与adjustment.updated。四个商品配置可用；交易读取权限已实测200。其他既有服务保持active。13项自动测试通过。尚未代替用户进行真实付款、真实上传生成和邮件收件验收。
+服务器配置文件：`/home/wisteria/emjo/shared/server.env`（私有600权限）；产品价格与风格定义：`config/catalog.json`。重启时的curl检查已补充retry-connrefused，避免启动瞬间假失败。

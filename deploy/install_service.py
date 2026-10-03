@@ -43,5 +43,5 @@ subprocess.run(['systemctl','daemon-reload'],check=True)
 subprocess.run(['systemctl','enable','--now','emjo.service'],check=True)
 subprocess.run(['systemctl','restart','emjo.service'],check=True)
 # No Nginx mutation: this host has no verified main-domain server block.
-subprocess.run(['curl','--fail','--retry','5','--retry-delay','2','--silent','--output','/dev/null','http://127.0.0.1:8013/sticker/'],check=True)
+subprocess.run(['curl','--fail','--retry-connrefused','--retry','5','--retry-delay','2','--silent','--output','/dev/null','http://127.0.0.1:8013/sticker/'],check=True)
 print('EMJO listening on 127.0.0.1:8013. Main-domain path proxy remains to be enabled separately.')
