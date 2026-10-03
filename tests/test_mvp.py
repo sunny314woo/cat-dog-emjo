@@ -258,3 +258,20 @@ def test_live_image_auth_failure_returns_trial_and_keeps_safe_diagnostic(setup):
     assert 'private' not in result['error']
     assert client.get('/sticker/api/me').json()['trial_available']
     with service.store.transaction() as tx:assert tx.get('jobs',jid)['failure_code']=='image_auth_failed'
+
+
+def test_email_account_usage_survives_new_device_and_failed_generation(setup):
+    _,service,catalog=setup
+    sid,user=signed_in(service,'credits@example.com')
+    with service.store.transaction() as tx:
+        service._grant(tx,'five-pack',user['id'],5,'order-five')
+        grant=tx.get('grants','five-pack');grant.update(available=3,consumed=1);tx.put('grants','five-pack',grant)
+    me=service.me(sid)
+    assert (me['pack_total'],me['pack_used'],me['pack_pending'],me['pack_balance'])==(5,1,1,3)
+    service.clock=lambda:__import__('time').time()+61
+    other_sid,_=signed_in(service,'CREDITS@example.com')
+    assert service.me(other_sid)['pack_balance']==3
+    with service.store.transaction() as tx:
+        grant=tx.get('grants','five-pack');grant['available']+=1;tx.put('grants','five-pack',grant)
+    me=service.me(other_sid)
+    assert (me['pack_used'],me['pack_pending'],me['pack_balance'])==(1,0,4)

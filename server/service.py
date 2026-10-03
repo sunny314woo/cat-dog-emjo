@@ -83,7 +83,12 @@ class Service:
         return self.me(sid)
     def me(self,sid):
         session,user,balance=self.current(sid)
-        return {'email':user['email'] if user else None,'pack_balance':balance,
+        with self.store.transaction() as tx:
+            grants=[g for g in tx.all('grants') if user and g['user_id']==user['id'] and not g['revoked']]
+        balance=sum(g['available'] for g in grants)
+        total=sum(g['quantity'] for g in grants)
+        used=sum(g['consumed'] for g in grants)
+        return {'pack_total':total,'pack_used':used,'pack_pending':max(0,total-used-balance),'email':user['email'] if user else None,'pack_balance':balance,
                 'referral_code':user['referral_code'] if user else None,
                 'trial_available':not(session['trial_used'] or user and(user['trial_used'] or user['paid_once'])),
                 'demo':self.s.mode=='demo'}
