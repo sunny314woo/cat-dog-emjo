@@ -8,7 +8,9 @@ import time
 import httpx
 from .settings import ROOT
 
-class ProviderError(Exception): pass
+class ProviderError(Exception):
+    def __init__(self,message,code='provider_failure'):
+        super().__init__(message);self.code=code
 
 def require(*names):
     missing=[n for n in names if not os.getenv(n)]
@@ -21,12 +23,14 @@ class Providers:
         require('VOLCENGINE_API_KEY','VOLCENGINE_MODEL_ID','VOLCENGINE_FINAL_SIZE')
         payload={'model':os.environ['VOLCENGINE_MODEL_ID'],'prompt':prompt,
                  'image':['data:image/jpeg;base64,'+base64.b64encode(p).decode() for p in photos],
-                 'size':os.environ['VOLCENGINE_FINAL_SIZE'],'response_format':'b64_json',
+                 'size':os.environ['VOLCENGINE_FINAL_SIZE'],'response_format':'b64_json','output_format':'png',
                  'sequential_image_generation':'disabled','watermark':False}
         with httpx.Client(timeout=180) as client:
             response=client.post(os.getenv('VOLCENGINE_BASE_URL','https://ark.cn-beijing.volces.com/api/v3').rstrip('/')+'/images/generations',
                 headers={'Authorization':'Bearer '+os.environ['VOLCENGINE_API_KEY']},json=payload)
-            if not response.is_success: raise ProviderError('图片服务暂未完成，请稍后重试')
+            if response.status_code==401:raise ProviderError('图片服务密钥未通过验证，请联系站点管理员更新配置', 'image_auth_failed')
+            if response.status_code==403:raise ProviderError('图片服务权限未开通，请联系站点管理员检查模型权限', 'image_permission_failed')
+            if not response.is_success:raise ProviderError('图片服务暂未完成，请稍后重试', 'image_http_'+str(response.status_code))
             data=response.json().get('data',[])
             if len(data)!=1 or not data[0].get('b64_json'): raise ProviderError('图片服务未返回单张有效母图')
             return base64.b64decode(data[0]['b64_json'],validate=True)

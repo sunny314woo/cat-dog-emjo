@@ -125,3 +125,6 @@ python3 -m pytest tests -q
 ### 已发布检查（2026-10-03）
 EMJO GitHub main 已同步；官网源码从独立工作树仅新增 sticker 产品目录，官网同步与 Cloudflare Pages/GitHub Pages 均成功。公网首页及 API 返回200，CORS允许官网携带会话；无签名支付通知返回401。Paddle目标已保存为 API 正式地址，Active，仅transaction.completed与adjustment.updated。四个商品配置可用；交易读取权限已实测200。其他既有服务保持active。13项自动测试通过。尚未代替用户进行真实付款、真实上传生成和邮件收件验收。
 服务器配置文件：`/home/wisteria/emjo/shared/server.env`（私有600权限）；产品价格与风格定义：`config/catalog.json`。重启时的curl检查已补充retry-connrefused，避免启动瞬间假失败。
+
+### 手机实际测试故障核对
+两张照片的生成任务确实进入live模式，photo_count=2，所选风格为soft_kawaii_chibi；未产生模型母图。配置中的火山密钥与本地项目参考文件一致，但火山接口实测返回401 AuthenticationError / API key doesn't exist。因此固定小猫风格卡片不是上传照片的生成结果，实际生成在认证阶段失败。需要账户所有者更新有效Ark API密钥后重启本服务。已补充安全失败分类（不记录凭据或照片），认证失败显示配置异常并退回权益。请求显式选择PNG格式；PNG格式本身不能证明模型能输出透明Alpha，仍待实际生成验证。

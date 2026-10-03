@@ -239,3 +239,22 @@ def test_api_cors_only_allows_product_origin(tmp_path):
         assert r.headers['access-control-allow-origin']=='https://wisteriasoftware.uk'
         assert r.headers['access-control-allow-credentials']=='true'
         assert client.post('/sticker/api/auth/logout',headers={'Origin':'https://evil.example'}).status_code==403
+
+
+def test_live_image_auth_failure_returns_trial_and_keeps_safe_diagnostic(setup):
+    from server.providers import ProviderError
+    client,service,catalog=setup
+    jid=create(client,catalog).json()['id']
+    seen=[]
+    def fail(prompt,photos):
+        seen.extend(photos)
+        raise ProviderError('private provider explanation','image_auth_failed')
+    service.providers.generate=fail
+    service.work_once()
+    assert len(seen)==1 and seen[0]!=b''
+    result=client.get('/sticker/api/generations/'+jid).json()
+    assert result['state']=='FAILED'
+    assert '配置异常' in result['error']
+    assert 'private' not in result['error']
+    assert client.get('/sticker/api/me').json()['trial_available']
+    with service.store.transaction() as tx:assert tx.get('jobs',jid)['failure_code']=='image_auth_failed'

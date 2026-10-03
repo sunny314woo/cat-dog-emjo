@@ -339,7 +339,11 @@ class Service:
                 current=tx.get('jobs',job['id'])
                 # An optional calibration copy error must not undo an otherwise READY delivery.
                 if current['state']!='READY':
-                    current.update(state='FAILED',error='这次没能制作完成，生成机会已退回。请稍后再试。',expires=self.clock()+86400)
+                    code=exc.code if isinstance(exc,ProviderError) else 'image_processing_failed'
+                    message='图片服务配置异常，生成机会已退回。请等待站点修复后再试。' if code in ('image_auth_failed','image_permission_failed') else '这次没能制作完成，生成机会已退回。请稍后再试。'
+                    current.update(state='FAILED',error=message,failure_code=code,expires=self.clock()+86400)
+                    import logging
+                    logging.getLogger('emjo').warning('Generation failed: job=%s code=%s',job['id'],code)
                     tx.put('jobs',job['id'],current)
                     if job['grant_id']:
                         grant=tx.get('grants',job['grant_id'])
