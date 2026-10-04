@@ -1,4 +1,21 @@
-# 独立服务器部署（待填写配置）
+# 独立服务器部署
+
+## 2026-10-04 当前状态（优先于下方历史记录）
+
+正式页面为 `https://wisteriasoftware.uk/sticker/`，API 为 `https://api.wisteriasoftware.uk/sticker/api`。两阶段流程已部署，独立 `emjo.service` 运行 live 模式；真实模型与支付、邮件的完整验收仍未完成。后端工作目录 `/home/wisteria/emjo/current`，配置 `/home/wisteria/emjo/shared/server.env`，Python venv `/home/wisteria/emjo/venv`。
+
+当前生图模型为 `doubao-seedream-5-0-flash-260915`，2K。原照先生成一张四风格母图，选中单张风格与原照再生成九宫格；每套两次调用，配置成本0.24元。`EMJO_REQUIRE_STYLE_PREVIEW=true` 禁止旧前端直接跳过第一阶段。没有自动生图重试或更贵模型回退。
+
+本地抠图使用 `server/requirements-matting.txt` 的 rembg[cpu] 2.0.67，u2netp 权重位于 `/home/wisteria/emjo/shared/models/u2netp.onnx`。设置 `EMJO_BACKGROUND_REMOVAL_MODE=rembg`、`U2NET_HOME=/home/wisteria/emjo/shared/models`；启动检查验证依赖及权重存在。独立低优先级进程完成一张图后退出，释放内存。2K 测试素材已经通过九张透明 PNG 输出，真实模型输出质量仍待测试。
+
+升级只更新本项目代码与配置，先备份，完成后在服务器终端逐行执行（每行按一次回车）：
+
+```bash
+sudo systemctl restart emjo.service
+sudo systemctl is-active emjo.service
+```
+
+官网仅同步 `sticker/` 前端文件，经官网源仓库 main 与既有同步工作流发布。配置、后端、`doubao/`、`UI/`、`.local-backups/` 均不公开。具体实测状态见 `docs/ai-handoff/mobile-e2e-debug-2026-10-03.md`。以下保留安装历史，不作为当前运行状态的证明。
 
 本服务独立使用 `/home/wisteria/emjo`、8013 端口和独立 MySQL 数据库/用户。不得复用或修改 Outline、语音服务数据库、环境文件或 service。
 

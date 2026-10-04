@@ -4,13 +4,46 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import time
 import httpx
 from .settings import ROOT
 
 class ProviderError(Exception):
-    def __init__(self,message,code='provider_failure'):
-        super().__init__(message);self.code=code
+    def __init__(self,message,code='provider_failure',diagnostics=None):
+        super().__init__(message);self.code=code;self.diagnostics=diagnostics or {}
+
+def image_error(response):
+    # Preserve only bounded identifiers, never upstream messages, headers or bodies.
+    try:
+        body=response.json()
+        error=body.get('error',{}) if isinstance(body,dict) else {}
+        if not isinstance(error,dict):error={}
+    except ValueError:
+        error={}
+    def identifier(value):
+        if not isinstance(value,str) or not re.fullmatch(r'[A-Za-z0-9_.:-]{1,128}',value):return None
+        if any(secret and secret in value for secret in (os.getenv('VOLCENGINE_API_KEY'),)):
+            return None
+        return value
+    upstream=identifier(error.get('code'))
+    details={'status':response.status_code,'upstream_code':upstream,
+             'request_id':identifier(response.headers.get('x-request-id') or error.get('request_id'))}
+    code='image_http_'+str(response.status_code)
+    message='图片服务暂未完成，请稍后重试'
+    if response.status_code==401:
+        code,message='image_auth_failed','图片服务密钥未通过验证，请联系站点管理员更新配置'
+    elif response.status_code==403:
+        code,message='image_permission_failed','图片服务权限未开通，请联系站点管理员检查模型权限'
+    elif response.status_code==429:
+        code,message='image_rate_limited','图片服务返回限流或额度限制，请等待站点核查后再试'
+        if upstream and upstream.startswith('QuotaExceeded'):
+            code,message='image_quota_exceeded','图片服务额度受限，请等待站点补齐额度配置'
+        elif upstream=='SetLimitExceeded':
+            code,message='image_spending_limit','图片服务已达到账户设置的限额，请等待站点核查'
+        elif upstream=='ServerOverloaded':
+            code,message='image_capacity_failed','图片服务当前繁忙，请稍后再试'
+    return ProviderError(message,code,details)
 
 def require(*names):
     missing=[n for n in names if not os.getenv(n)]
@@ -24,16 +57,17 @@ class Providers:
         payload={'model':os.environ['VOLCENGINE_MODEL_ID'],'prompt':prompt,
                  'image':['data:image/jpeg;base64,'+base64.b64encode(p).decode() for p in photos],
                  'size':os.environ['VOLCENGINE_FINAL_SIZE'],'response_format':'b64_json','output_format':'png',
-                 'sequential_image_generation':'disabled','watermark':False}
+                 'watermark':False}
         with httpx.Client(timeout=180) as client:
             response=client.post(os.getenv('VOLCENGINE_BASE_URL','https://ark.cn-beijing.volces.com/api/v3').rstrip('/')+'/images/generations',
                 headers={'Authorization':'Bearer '+os.environ['VOLCENGINE_API_KEY']},json=payload)
-            if response.status_code==401:raise ProviderError('图片服务密钥未通过验证，请联系站点管理员更新配置', 'image_auth_failed')
-            if response.status_code==403:raise ProviderError('图片服务权限未开通，请联系站点管理员检查模型权限', 'image_permission_failed')
-            if not response.is_success:raise ProviderError('图片服务暂未完成，请稍后重试', 'image_http_'+str(response.status_code))
+            if not response.is_success:raise image_error(response)
             data=response.json().get('data',[])
             if len(data)!=1 or not data[0].get('b64_json'): raise ProviderError('图片服务未返回单张有效母图')
             return base64.b64decode(data[0]['b64_json'],validate=True)
+    def generate_styles(self,prompt,photos):
+        if self.settings.mode=='demo':return (ROOT/'assets/cat-styles.png').read_bytes()
+        return self.generate(prompt,photos)
     def email(self, address, subject, html, key, attachment=None):
         if self.settings.mode=='demo': return 'demo-mail-'+key
         require('RESEND_API_KEY','MAIL_FROM')

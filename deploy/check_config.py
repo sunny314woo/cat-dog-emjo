@@ -1,6 +1,8 @@
 """Fail closed before starting production. Print names only, never values."""
 import os
 import sys
+import importlib.util
+from pathlib import Path
 required = ['EMJO_SESSION_SIGNING_SECRET','EMJO_MYSQL_HOST','EMJO_MYSQL_DATABASE',
  'EMJO_MYSQL_USER','EMJO_MYSQL_PASSWORD','EMJO_PUBLIC_URL','VOLCENGINE_API_KEY',
  'VOLCENGINE_MODEL_ID','VOLCENGINE_FINAL_SIZE','PADDLE_API_KEY','PADDLE_CLIENT_TOKEN',
@@ -8,6 +10,11 @@ required = ['EMJO_SESSION_SIGNING_SECRET','EMJO_MYSQL_HOST','EMJO_MYSQL_DATABASE
  'RESEND_API_KEY','MAIL_FROM']
 missing = [k for k in required if not os.getenv(k) or 'PLACEHOLDER' in os.getenv(k, '')]
 if os.getenv('EMJO_MODE') != 'live': missing.append('EMJO_MODE=live')
+if os.getenv('EMJO_BACKGROUND_REMOVAL_MODE') == 'rembg':
+ if importlib.util.find_spec('rembg') is None: missing.append('rembg dependency')
+ model_home = os.getenv('U2NET_HOME', '')
+ if not model_home or not (Path(model_home) / 'u2netp.onnx').is_file():
+  missing.append('U2NET_HOME/u2netp.onnx')
 if missing:
  print('Configuration pending: ' + ', '.join(missing)); sys.exit(1)
 print('Required production configuration present; external integrations still need validation.')

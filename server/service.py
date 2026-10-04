@@ -11,8 +11,8 @@ import secrets
 import shutil
 import time
 import uuid
-from .catalog import CATALOG, EXPRESSIONS, PRODUCTS, STYLES, build_prompt
-from .imaging import prepare_pack, read_upload
+from .catalog import CATALOG, EXPRESSIONS, PRODUCTS, STYLES, build_prompt, build_style_prompt
+from .imaging import prepare_pack, prepare_styles, read_upload
 from .providers import ProviderError
 
 class RuleError(Exception):
@@ -98,7 +98,7 @@ class Service:
             raise RuleError('没有找到这份作品',404)
         return job
     def _public_job(self,job):
-        return {k:job.get(k) for k in ('id','state','style','created','expires','selected','unlocked','error','demo','calibration','captions','accessories')}
+        return {k:job.get(k) for k in ('id','state','style','created','expires','selected','unlocked','error','demo','calibration','captions','accessories','workflow','preview_styles')}
     def job(self,sid,jid):
         with self.store.transaction() as tx:
             job=self._owned(tx,sid,jid)
@@ -106,15 +106,16 @@ class Service:
             if job.get('expires') and job['expires']<=self.clock(): data['state']='EXPIRED'
             data['cells']=EXPRESSIONS
             return data
-    def create_job(self,sid,request_id,photos,style,captions=True,accessories=True,consent=False):
+    def create_job(self,sid,request_id,photos,style,captions=True,accessories=True,consent=False,preview=False):
         if not re.fullmatch(r'[a-zA-Z0-9-]{16,64}',request_id): raise RuleError('生成请求标识无效')
         if not 1<=len(photos)<=3: raise RuleError('请上传 1–3 张同一主体的照片')
         if any(len(p)>self.s.upload_bytes for p in photos): raise RuleError('每张照片请小于 15MB',413)
         try:
-            prompt=build_prompt(style,len(photos),accessories)
+            style_ids=[s['id'] for s in CATALOG['styles'] if s['active']]
+            prompt=build_style_prompt(style_ids,len(photos)) if preview else build_prompt(style,len(photos),accessories)
             normalized=[read_upload(p,self.s.upload_pixels,self.s.max_edge) for p in photos]
         except Exception as exc: raise RuleError(str(exc)) from exc
-        fingerprint=hashlib.sha256(b''.join(normalized)+json.dumps([style,captions,accessories,consent]).encode()).hexdigest()
+        fingerprint=hashlib.sha256(b''.join(normalized)+json.dumps([style,captions,accessories,consent,preview]).encode()).hexdigest()
         request_key=self.digest(sid+request_id)
         jid=uuid.uuid4().hex; now=self.clock(); folder=self.s.data_dir/'jobs'/jid
         with self.store.transaction() as tx:
@@ -123,7 +124,7 @@ class Service:
                 if existing['fingerprint']!=fingerprint: raise RuleError('该请求已用于另一份作品',409)
                 return self._public_job(self._owned(tx,sid,existing['job_id']))
             session=tx.get('sessions',sid); user=tx.get('users',session['user_id']) if session['user_id'] else None
-            if any(j['session_id']==sid and j['state'] in ('QUEUED','GENERATING','PROCESSING') for j in tx.all('jobs')):
+            if any((j['session_id']==sid or user and j.get('user_id')==user['id']) and j['state'] in ('QUEUED','GENERATING','PROCESSING','PREVIEW_QUEUED','PREVIEW_GENERATING','STYLE_READY') for j in tx.all('jobs')):
                 raise RuleError('上一份正在制作，先等待它完成吧',409)
             free=not(session['trial_used'] or user and(user['trial_used'] or user['paid_once']))
             grant=None
@@ -155,11 +156,64 @@ class Service:
             job={'id':jid,'session_id':sid,'user_id':user['id'] if user else None,'style':style,
                  'captions':captions,'accessories':accessories,'consent':bool(consent and self.s.calibration_enabled),
                  'consent_version':'calibration-v1-100-30d' if consent and self.s.calibration_enabled else None,
-                 'created':now,'state':'QUEUED','photo_count':len(normalized),'prompt':prompt,'prompt_version':'v0.6-adapter',
+                 'created':now,'state':'PREVIEW_QUEUED' if preview else 'QUEUED','photo_count':len(normalized),'prompt':prompt,'prompt_version':'v0.7-two-stage' if preview else 'v0.6-adapter',
+                 'model_id':os.getenv('VOLCENGINE_MODEL_ID'),'image_size':os.getenv('VOLCENGINE_FINAL_SIZE'),
                  'grant_id':grant['id'] if grant else None,'free':free,'selected':[],
-                 'unlocked':not free,'expires':None,'demo':self.s.mode=='demo','calibration':False,'error':None}
+                 'unlocked':not free,'expires':now+86400 if preview else None,'demo':self.s.mode=='demo','calibration':False,'error':None}
+            if preview:
+                job.update(workflow='personalized_styles_v1',style=None,
+                           preview_styles=[{'id':s,'name':STYLES[s]['name'],'index':i+1} for i,s in enumerate(style_ids)],
+                           final_prompts={s:build_prompt(s,len(photos),accessories,style_reference=True) for s in style_ids})
             tx.put('jobs',jid,job);tx.put('requests',request_key,{'fingerprint':fingerprint,'job_id':jid})
         return self._public_job(job)
+
+    def choose_style(self,sid,jid,style):
+        with self.store.transaction() as tx:
+            job=self._owned(tx,sid,jid)
+            if job.get('workflow')!='personalized_styles_v1':raise RuleError('该作品没有个性化风格预览',409)
+            if job.get('style'):
+                if job['style']!=style:raise RuleError('本次制作的风格已锁定',409)
+                if job['state'] in ('QUEUED','GENERATING','PROCESSING','READY'):return self._public_job(job)
+            if job['state']!='STYLE_READY':raise RuleError('请先完成风格预览',409)
+            if job['expires']<=self.clock():raise RuleError('风格预览已过期，请重新上传',410)
+            if style not in job['final_prompts']:raise RuleError('请选择本次生成的风格')
+            index=next(s['index'] for s in job['preview_styles'] if s['id']==style)
+            job.update(style=style,style_index=index,prompt=job['final_prompts'][style],state='QUEUED',expires=None)
+            tx.put('jobs',jid,job)
+            return self._public_job(job)
+
+    def _release_reservation(self,tx,job):
+        if job.get('reservation_released'):return
+        if job.get('grant_id'):
+            grant=tx.get('grants',job['grant_id'])
+            if grant and not grant['revoked']:grant['available']+=1;tx.put('grants',grant['id'],grant)
+        elif job.get('free'):
+            session=tx.get('sessions',job['session_id']);session['trial_used']=False;tx.put('sessions',session['id'],session)
+            if job.get('user_id'):
+                user=tx.get('users',job['user_id']);user['trial_used']=False;tx.put('users',user['id'],user)
+        job['reservation_released']=True
+
+    def cancel_preview(self,sid,jid):
+        with self.store.transaction() as tx:
+            job=self._owned(tx,sid,jid)
+            if job.get('workflow')!='personalized_styles_v1':raise RuleError('不是风格预览任务',409)
+            if job['state']=='CANCELLED':return {'ok':True}
+            if job['state']!='STYLE_READY':raise RuleError('制作中不能更换照片，请等待当前步骤完成',409)
+            self._release_reservation(tx,job)
+            job.update(state='CANCELLED',expires=self.clock());tx.put('jobs',jid,job)
+        shutil.rmtree(self.s.data_dir/'jobs'/jid,ignore_errors=True)
+        return {'ok':True}
+
+    def preview_file(self,sid,jid,index):
+        if index not in range(1,5):raise RuleError('风格不存在',404)
+        with self.store.transaction() as tx:
+            job=self._owned(tx,sid,jid)
+            if job.get('workflow')!='personalized_styles_v1' or job['state'] not in ('STYLE_READY','QUEUED','GENERATING','PROCESSING','READY'):
+                raise RuleError('风格预览尚未准备好',409)
+            if job.get('expires') and job['expires']<=self.clock():raise RuleError('风格预览已过期',410)
+        path=self.s.data_dir/'jobs'/jid/f'style-choice-{index}.jpg'
+        if not path.is_file():raise RuleError('风格预览已清理',410)
+        return path
     def claim(self,sid,jid,cells):
         if len(cells)!=2 or len(set(cells))!=2 or any(type(i)!=int or not 1<=i<=9 for i in cells):
             raise RuleError('请选择不同的两张贴纸')
@@ -297,21 +351,33 @@ class Service:
     def work_once(self):
         now=self.clock(); job=None
         with self.store.transaction() as tx:
-            candidates=sorted([j for j in tx.all('jobs') if j['state']=='QUEUED'],key=lambda j:j['created'])
+            candidates=sorted([j for j in tx.all('jobs') if j['state'] in ('QUEUED','PREVIEW_QUEUED')],key=lambda j:j['created'])
             if candidates:
-                job=candidates[0];job.update(state='GENERATING',lease_until=now+360);tx.put('jobs',job['id'],job)
+                job=candidates[0];job.update(state='PREVIEW_GENERATING' if job['state']=='PREVIEW_QUEUED' else 'GENERATING',lease_until=now+360);tx.put('jobs',job['id'],job)
         if not job:return False
         folder=self.s.data_dir/'jobs'/job['id']
+        is_preview=job['state']=='PREVIEW_GENERATING'
+        stage='style_generation' if is_preview else 'generation'
         try:
-            raw=folder/'provider-output.png'
+            raw=folder/('style-output.png' if is_preview else 'provider-output.png')
             if raw.exists():output=raw.read_bytes()
             else:
                 photos=[(folder/f'input-{i+1}.jpg').read_bytes() for i in range(job['photo_count'])]
-                output=self.providers.generate(job['prompt'],photos)
-                temporary=folder/'provider-output.tmp';temporary.write_bytes(output);temporary.replace(raw)
+                if not is_preview and job.get('workflow')=='personalized_styles_v1':
+                    photos.append((folder/f"style-reference-{job['style_index']}.jpg").read_bytes())
+                output=(self.providers.generate_styles if is_preview else self.providers.generate)(job['prompt'],photos)
+                temporary=raw.with_suffix('.tmp');temporary.write_bytes(output);temporary.replace(raw)
+            if is_preview:
+                stage='style_processing'
+                prepare_styles(output,folder,demo=self.s.mode=='demo')
+                with self.store.transaction() as tx:
+                    current=tx.get('jobs',job['id']);current.update(state='STYLE_READY',error=None)
+                    tx.put('jobs',job['id'],current)
+                return True
             with self.store.transaction() as tx:
                 current=tx.get('jobs',job['id']);current['state']='PROCESSING';tx.put('jobs',job['id'],current)
-            prepare_pack(output,folder,job['captions'],os.getenv('EMJO_BACKGROUND_REMOVAL_MODE','alpha_only'),strict_boundaries=self.s.mode!='demo')
+            stage='processing'
+            prepare_pack(output,folder,job['captions'],os.getenv('EMJO_BACKGROUND_REMOVAL_MODE') or 'alpha_only',strict_boundaries=self.s.mode!='demo')
             with self.store.transaction() as tx:
                 current=tx.get('jobs',job['id'])
                 if job['grant_id']:
@@ -344,43 +410,41 @@ class Service:
                 current=tx.get('jobs',job['id'])
                 # An optional calibration copy error must not undo an otherwise READY delivery.
                 if current['state']!='READY':
-                    code=exc.code if isinstance(exc,ProviderError) else 'image_processing_failed'
+                    code=exc.code if isinstance(exc,ProviderError) else 'image_processing_failed' if stage.endswith('processing') else 'image_generation_failed'
                     message='图片服务配置异常，生成机会已退回。请等待站点修复后再试。' if code in ('image_auth_failed','image_permission_failed') else '这次没能制作完成，生成机会已退回。请稍后再试。'
-                    current.update(state='FAILED',error=message,failure_code=code,expires=self.clock()+86400)
+                    if code in ('image_rate_limited','image_quota_exceeded','image_spending_limit','image_capacity_failed'):
+                        message=str(exc)+'。生成机会已退回，请勿连续重试。'
+                    elif code=='image_processing_failed':
+                        message='图片已生成，但透明处理或主体完整性检查未通过，生成机会已退回。'
+                    diagnostics=exc.diagnostics if isinstance(exc,ProviderError) else {}
+                    current.update(state='FAILED',error=message,failure_code=code,failure_stage=stage,
+                                   provider_diagnostics=diagnostics,expires=self.clock()+86400)
                     import logging
-                    logging.getLogger('emjo').warning('Generation failed: job=%s code=%s',job['id'],code)
+                    logging.getLogger('emjo').warning('Generation failed: job=%s stage=%s code=%s diagnostics=%s',job['id'],stage,code,json.dumps(diagnostics))
+                    self._release_reservation(tx,current)
                     tx.put('jobs',job['id'],current)
-                    if job['grant_id']:
-                        grant=tx.get('grants',job['grant_id'])
-                        if not grant['revoked']:grant['available']+=1;tx.put('grants',grant['id'],grant)
-                    elif job['free']:
-                        session=tx.get('sessions',job['session_id']);session['trial_used']=False;tx.put('sessions',session['id'],session)
-                        if current['user_id']:
-                            user=tx.get('users',current['user_id']);user['trial_used']=False;tx.put('users',user['id'],user)
         finally:
-            for path in folder.glob('input-*.jpg'):path.unlink(missing_ok=True)
+            with self.store.transaction() as tx:latest=tx.get('jobs',job['id'])
+            if latest['state']!='STYLE_READY':
+                for path in folder.glob('input-*.jpg'):path.unlink(missing_ok=True)
         return True
     def maintenance(self):
         now=self.clock(); to_delete=[]
         with self.store.transaction() as tx:
             for job in tx.all('jobs'):
-                if job.get('expires') and job['expires']<=now and job['state'] not in ('GENERATING','PROCESSING'):
-                    job['state']='EXPIRED';job.pop('prompt',None);tx.put('jobs',job['id'],job)
+                if job.get('expires') and job['expires']<=now and job['state'] not in ('GENERATING','PROCESSING','PREVIEW_GENERATING'):
+                    if job['state'] in ('STYLE_READY','PREVIEW_QUEUED'):self._release_reservation(tx,job)
+                    job['state']='EXPIRED';job.pop('prompt',None);job.pop('final_prompts',None);tx.put('jobs',job['id'],job)
                     to_delete.append(self.s.data_dir/'jobs'/job['id'])
                 # Uncertain upstream outcomes are surfaced for recovery, never blindly reissued.
-                if job['state'] in ('GENERATING','PROCESSING') and job.get('lease_until',0)<now:
-                    if (self.s.data_dir/'jobs'/job['id']/'provider-output.png').exists():
-                        job.update(state='QUEUED',error=None)
+                if job['state'] in ('GENERATING','PROCESSING','PREVIEW_GENERATING') and job.get('lease_until',0)<now:
+                    preview=job['state']=='PREVIEW_GENERATING'
+                    raw=self.s.data_dir/'jobs'/job['id']/('style-output.png' if preview else 'provider-output.png')
+                    if raw.exists():
+                        job.update(state='PREVIEW_QUEUED' if preview else 'QUEUED',error=None)
                     else:
                         job.update(state='FAILED',error='制作中断，机会已退回。请重新尝试。',expires=now+86400)
-                        if job.get('grant_id'):
-                            grant=tx.get('grants',job['grant_id'])
-                            if grant and not grant['revoked']:
-                                grant['available']+=1;tx.put('grants',grant['id'],grant)
-                        else:
-                            session=tx.get('sessions',job['session_id']);session['trial_used']=False;tx.put('sessions',session['id'],session)
-                            if job.get('user_id'):
-                                user=tx.get('users',job['user_id']);user['trial_used']=False;tx.put('users',user['id'],user)
+                        self._release_reservation(tx,job)
                         to_delete.append(self.s.data_dir/'jobs'/job['id'])
                     tx.put('jobs',job['id'],job)
             for case in tx.all('calibration'):

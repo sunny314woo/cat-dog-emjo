@@ -6,7 +6,20 @@ EXPRESSIONS = CATALOG['theme']['expressions']
 STYLES = {s['id']: s for s in CATALOG['styles']}
 PRODUCTS = {p['id']: p for p in CATALOG['products']}
 
-def build_prompt(style_id: str, reference_count: int, accessories: bool) -> str:
+def build_style_prompt(style_ids, reference_count):
+    if len(style_ids)!=4 or len(set(style_ids))!=4 or any(s not in STYLES or not STYLES[s]['active'] for s in style_ids):
+        raise ValueError('需要四种已开放的风格')
+    if reference_count not in (1,2,3):raise ValueError('需要 1–3 张照片')
+    lines=['根据原照片中的同一个指定主体，生成一张正方形2×2四风格预览母图。',
+           '第一张照片是身份主参考，其余照片只补充同一主体特征。保留脸型、花纹、发型或耳型及原有穿戴。',
+           '四格保持同一个自然姿势、视角和构图，完整显示头部、身体及尾巴；每格只有一个主体。',
+           '按从左到右、从上到下顺序分别采用以下四种风格，不混合画风：']
+    for i,sid in enumerate(style_ids):lines.append(f'{i+1}. '+STYLES[sid]['prompt'])
+    lines.extend(['每个主体完整位于自己格子中央70%范围，四周留白，禁止主体或配饰跨格。',
+                  '纯白背景，不要格线、阴影、棋盘格、文字、编号、水印和额外道具。'])
+    return '\n'.join(lines)
+
+def build_prompt(style_id: str, reference_count: int, accessories: bool, style_reference=False) -> str:
     """Captions/display labels NEVER enter model inputs. Order is the reveal contract."""
     if style_id not in STYLES or not STYLES[style_id]['active']:
         raise ValueError('请选择已开放的风格')
@@ -28,4 +41,6 @@ def build_prompt(style_id: str, reference_count: int, accessories: bool) -> str:
                   '仅保留指定小配饰和少量情绪装饰，不遮挡脸部，不增加其他主体、场景、地面投影。',
                   '背景使用干净单色或真实透明，不绘制棋盘格；纸张与蜡笔颗粒仅在主体内部。'])
     if not accessories: lines.append('不新增小道具或穿戴；保留原照片可见配件和少量情绪线。')
+    if style_reference:
+        lines.append(f'前{reference_count}张是原照片，负责锁定身份。最后第{reference_count+1}张是用户选中的单一风格参考，严格沿用其线条、色彩和材质；不复制其姿势，不混入其他风格。身份有冲突时以原照片为准。')
     return '\n'.join(lines)

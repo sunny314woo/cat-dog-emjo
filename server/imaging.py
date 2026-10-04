@@ -1,6 +1,9 @@
 from io import BytesIO
 from pathlib import Path
 import os
+import subprocess
+import sys
+import tempfile
 import zipfile
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 from .catalog import EXPRESSIONS
@@ -23,6 +26,39 @@ def has_transparency(image):
     hist = image.getchannel('A').histogram()
     total=image.width*image.height
     return sum(hist[:32]) > total*.025 and sum(hist[160:]) > total*.03
+
+def remove_background(image, folder):
+    with tempfile.TemporaryDirectory(prefix='matting-',dir=folder) as temporary:
+        source=Path(temporary)/'input.png';target=Path(temporary)/'output.png'
+        image.save(source)
+        # Do not pass provider credentials to the image-only subprocess.
+        env={k:os.environ[k] for k in ('PATH','HOME','LANG','U2NET_HOME') if k in os.environ}
+        try:
+            subprocess.run([sys.executable,str(Path(__file__).with_name('matting_worker.py')),str(source),str(target)],
+                           env=env,timeout=120,check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+        except (subprocess.SubprocessError,OSError) as exc:
+            raise ValueError('本地抠图未完成，请检查抠图依赖与模型文件') from exc
+        with Image.open(target) as output:
+            output.load();return output.convert('RGBA')
+
+def prepare_styles(source,folder,demo=False):
+    folder.mkdir(parents=True,exist_ok=True)
+    with Image.open(BytesIO(source)) as image:
+        image.load()
+        if not .97<=image.width/image.height<=1.03:raise ValueError('风格预览母图必须为正方形')
+        # Preview cells are references, not transparent sticker deliverables.
+        for i in range(4):
+            x,y=i%2,i//2
+            crop=image.crop((round(x*image.width/2),round(y*image.height/2),
+                             round((x+1)*image.width/2),round((y+1)*image.height/2)))
+            background=Image.new('RGB',crop.size,'white')
+            if crop.mode=='RGBA':background.paste(crop,mask=crop.getchannel('A'))
+            else:background.paste(crop.convert('RGB'))
+            background.save(folder/f'style-reference-{i+1}.jpg',quality=95)
+            background.thumbnail((512,512),Image.Resampling.LANCZOS)
+            if demo:
+                ImageDraw.Draw(background).text((12,12),'DEMO',fill='black')
+            background.save(folder/f'style-choice-{i+1}.jpg',quality=88)
 
 def font(size):
     candidates=[os.getenv('EMJO_FONT_PATH',''), '/System/Library/Fonts/PingFang.ttc', '/System/Library/Fonts/STHeiti Medium.ttc',
@@ -53,12 +89,14 @@ def prepare_pack(source: bytes, folder: Path, captions=True, background_mode='al
     if image.width/image.height < .97 or image.width/image.height > 1.03:
         raise ValueError('母图不是有效的方形九宫格')
     # Reject non-transparent output, or use the explicitly configured matting adapter.
+    matted=False
     if not has_transparency(image):
         if background_mode != 'rembg': raise ValueError('输出还没有合格透明背景，需要配置并验证抠图适配器')
-        from rembg import remove
-        image=remove(image)
+        image=remove_background(image,folder)
+        matted=True
         if not has_transparency(image): raise ValueError('背景处理未通过透明度检查')
-    subjects=extract_subjects(image)
+    # Matting can connect separate subjects with a low-confidence alpha fringe.
+    subjects=extract_subjects(image,core_threshold=160 if matted else 128)
     image.save(folder/'mother.png')
     grid=Image.new('RGBA',(1536,1536),(0,0,0,0))
     for i, expression in enumerate(EXPRESSIONS):

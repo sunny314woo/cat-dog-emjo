@@ -22,6 +22,7 @@ class VerifyInput(EmailInput):
     code: str = Field(max_length=6)
     referral: str | None = Field(default=None,max_length=40)
 class ClaimInput(BaseModel): cells: list[int]
+class StyleInput(BaseModel): style: str = Field(max_length=80)
 class ShareInput(BaseModel):
     cell: int
     variant: str = "png512"
@@ -69,7 +70,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
                 return JSONResponse({'error':'请求来源不匹配'},status_code=403)
             length=request.headers.get('content-length')
             if length and (not length.isdigit() or int(length)>48*1024*1024):return JSONResponse({'error':'上传内容过大'},status_code=413)
-            if request.url.path.endswith('/generations') and not length:
+            if request.url.path.endswith(('/generations','/style-previews')) and request.method=='POST' and not length:
                 return JSONResponse({'error':'上传请求需要指定长度'},status_code=411)
         response=await call_next(request)
         response.headers['X-Content-Type-Options']='nosniff'
@@ -93,6 +94,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
         products=[dict(p,available=settings.mode=='live' and bool(os.getenv('PADDLE_WEBHOOK_SECRET')) and bool(os.getenv('PADDLE_PRICE_'+p['id']+'_ID'))) for p in PRODUCTS.values()]
         return session_response(request,{'styles':public_styles,'theme':CATALOG['theme'],'products':products,
             'me':service.me(sid),'calibration':{'enabled':settings.calibration_enabled,'limit':settings.calibration_limit,'days':settings.calibration_days},
+            'workflow':'personalized_styles_v1',
             'paddle':{'environment':os.getenv('PADDLE_ENVIRONMENT','sandbox'),'clientToken':os.getenv('PADDLE_CLIENT_TOKEN','')}})
     @app.get(prefix+'/me')
     def me(request:Request):return session_response(request,service.me(identity(request)))
@@ -109,12 +111,28 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
     @app.post(prefix+'/generations')
     def generate(request:Request,photos:list[UploadFile]=File(...),request_id:str=Form(...),style:str=Form(...),
                  captions:bool=Form(True),accessories:bool=Form(True),calibration_consent:bool=Form(False)):
+        if settings.mode=='live' and os.getenv('EMJO_REQUIRE_STYLE_PREVIEW')=='true':
+            raise RuleError('制作流程已更新，请刷新页面后先生成四种风格',409)
         sid=identity(request)
         if not 1<=len(photos)<=3:raise RuleError('请上传 1–3 张照片')
         content=[p.file.read(settings.upload_bytes+1) for p in photos]
         return session_response(request,service.create_job(sid,request_id,content,style,captions,accessories,calibration_consent))
     @app.get(prefix+'/generations/{jid}')
     def generation(jid:str,request:Request):return service.job(identity(request),jid)
+    @app.post(prefix+'/style-previews')
+    def style_preview(request:Request,photos:list[UploadFile]=File(...),request_id:str=Form(...),
+                      captions:bool=Form(True),accessories:bool=Form(True),calibration_consent:bool=Form(False)):
+        sid=identity(request)
+        if not 1<=len(photos)<=3:raise RuleError('请上传 1–3 张照片')
+        content=[p.file.read(settings.upload_bytes+1) for p in photos]
+        return session_response(request,service.create_job(sid,request_id,content,None,captions,accessories,calibration_consent,preview=True))
+    @app.post(prefix+'/generations/{jid}/style')
+    def choose_style(jid:str,body:StyleInput,request:Request):return service.choose_style(identity(request),jid,body.style)
+    @app.delete(prefix+'/style-previews/{jid}')
+    def cancel_style_preview(jid:str,request:Request):return service.cancel_preview(identity(request),jid)
+    @app.get(prefix+'/style-previews/{jid}/{index}')
+    def style_image(jid:str,index:int,request:Request):
+        return FileResponse(service.preview_file(identity(request),jid,index),media_type='image/jpeg')
     @app.post(prefix+'/generations/{jid}/claim')
     def claim(jid:str,body:ClaimInput,request:Request):return service.claim(identity(request),jid,body.cells)
     @app.post(prefix+'/generations/{jid}/share')

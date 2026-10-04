@@ -5,13 +5,13 @@ Touching/ambiguous main subjects fail closed instead of being cut apart.
 """
 from PIL import Image, ImageFilter, ImageChops
 
-def extract_subjects(image, columns=3, rows=3):
+def extract_subjects(image, columns=3, rows=3, core_threshold=128):
     image=image.convert('RGBA');w,h=image.size
     alpha=image.getchannel('A')
     # Half-scale core masks avoid treating individual antialiased hairs as subjects.
     mw=max(1,w//2);mh=max(1,h//2)
     values=alpha.resize((mw,mh),Image.Resampling.BOX).tobytes()
-    unseen=bytearray(v>128 for v in values);components=[]
+    unseen=bytearray(v>core_threshold for v in values);components=[]
     for start in range(mw*mh):
         if not unseen[start]:continue
         unseen[start]=0;stack=[start];points=[];sx=sy=0
