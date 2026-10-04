@@ -31,3 +31,23 @@ body[data-screen=home] #mobile-title{visibility:hidden}
 .hero-copy{margin-bottom:38px}.home-example{overflow:visible;padding:14px 12px 14px}.source-row{position:relative;justify-content:flex-start;padding:0 5px;gap:17px;min-height:85px;margin-top:-39px;margin-bottom:8px}.source-row .source-polaroid{width:76px;align-self:flex-start;transform:rotate(-3deg);padding:3px;background:#fff;border-radius:12px;box-shadow:0 4px 11px #906a3420}.source-row .source-polaroid img{border-radius:9px;width:100%;height:auto;aspect-ratio:3/4;object-fit:contain}.source-row .hero-sub{padding-top:25px;font-size:13px}.home-grid{padding:12px 0 16px;background:#fff;border-radius:13px}.home-grid>img{border-radius:9px}
 
 .product-benefits{display:flex;flex-direction:column;gap:7px;flex:1;min-width:0}.product-benefits strong{font-size:13px}.product-benefits small{font-size:10px;color:var(--muted);line-height:1.6}.product-benefits>span{font-size:10px;color:#9c792f}.product-row{gap:12px;align-items:center}
+
+/* Fixed tracks and absolute faces keep revealed image sizes out of grid sizing. */
+body{width:100%}main,.studio,#result-view,#maker{min-width:0}
+.result-grid{width:100%;grid-template-columns:repeat(3,minmax(0,1fr))}
+.result-grid .sticker-card{min-width:0;width:100%;overflow:hidden}
+.result-grid .sticker-picture{display:block;position:relative;min-width:0;width:100%;height:auto;aspect-ratio:1;overflow:hidden}
+.card-flipper{position:absolute;inset:0;width:100%;height:100%}
+.card-front img{min-width:0;max-width:100%;position:absolute;inset:0}
+.card-front.transparent-master{background:#dfece7;background-image:none}
+.style-options{grid-template-columns:repeat(2,minmax(0,1fr))}.style-card{min-width:0}
+.unlock-area>div{width:100%;min-width:0}.unlock-area .price-note{font-size:15px;line-height:1.6;margin:9px 0;color:#6a5540}
+.product-benefits>span{font-size:13px;line-height:1.5;overflow-wrap:anywhere}
+.copy-url{width:100%;min-width:0;margin:10px 0 20px;padding:10px;font-size:12px;border:1px solid var(--line);background:white;color:var(--ink)}
+.progress-view #progress-copy{max-width:300px;margin:16px auto;line-height:1.8;font-size:14px}
+.bounce-loader{position:relative;width:96px;height:105px;margin:0 auto 25px}
+.bounce-ball{position:absolute;left:30px;bottom:16px;width:36px;height:36px;border-radius:50%;background:#eea63b;box-shadow:inset -5px -5px 0 #d98b24;animation:ball-bounce 1s infinite}
+.bounce-shadow{position:absolute;left:24px;bottom:9px;width:48px;height:7px;border-radius:50%;background:#8e705529;animation:ball-shadow 1s infinite}
+@keyframes ball-bounce{0%,100%{transform:translateY(0) scale(1.15,.8)}12%,88%{transform:translateY(-10px) scale(.95,1.05)}50%{transform:translateY(-58px) scale(1,1)}}
+@keyframes ball-shadow{0%,100%{transform:scaleX(1);opacity:.8}50%{transform:scaleX(.5);opacity:.3}}
+@media(hover:none){.button:hover:not(:disabled){transform:none}}

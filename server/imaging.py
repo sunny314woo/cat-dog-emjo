@@ -107,6 +107,9 @@ def prepare_pack(source: bytes, folder: Path, captions=True, background_mode='al
             draw.text((256,453),expression['label'],font=font(38),anchor='mm',fill='#594735',stroke_width=5,stroke_fill='white')
         sticker.save(folder/f'sticker-{i+1}.png')
         sticker.resize((256,256),Image.Resampling.LANCZOS).save(folder/f'sticker-{i+1}-256.png')
+        wechat=sticker.resize((240,240),Image.Resampling.LANCZOS)
+        wechat.save(folder/f'sticker-{i+1}-240.png')
+        save_wechat_gif(wechat,folder/f'sticker-{i+1}-240.gif')
         sticker.save(folder/f'sticker-{i+1}.webp',format='WEBP',quality=80,method=0)
         grid.alpha_composite(sticker,(col*512,row*512))
         # Protection is baked into the pixels on the server; no HD is sent for locked cells.
@@ -127,3 +130,11 @@ def prepare_pack(source: bytes, folder: Path, captions=True, background_mode='al
             archive.write(folder/name,name)
         archive.writestr('README.txt','9 transparent PNG stickers + one grid. Save a local copy before your download expires.\n')
     return {'width':512,'height':512,'cells':9}
+
+def save_wechat_gif(image,path):
+    image=image.convert('RGBA')
+    rgb=Image.new('RGB',image.size,'white');rgb.paste(image,mask=image.getchannel('A'))
+    palette=rgb.quantize(colors=255,dither=Image.Dither.NONE)
+    transparent=image.getchannel('A').point(lambda a:255 if a<128 else 0)
+    palette.paste(255,mask=transparent)
+    palette.save(path,format='GIF',transparency=255,disposal=2,optimize=False)

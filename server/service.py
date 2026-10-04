@@ -12,7 +12,7 @@ import shutil
 import time
 import uuid
 from .catalog import CATALOG, EXPRESSIONS, PRODUCTS, STYLES, build_prompt, build_style_prompt
-from .imaging import prepare_pack, prepare_styles, read_upload
+from .imaging import prepare_pack, prepare_styles, read_upload, save_wechat_gif
 from .providers import ProviderError
 
 class RuleError(Exception):
@@ -228,7 +228,7 @@ class Service:
         if job['state']!='READY': raise RuleError('作品还没有准备好',409)
         if job['expires']<=self.clock(): raise RuleError('作品已过期，请使用之前保存的副本',410)
     def authorize_file(self,sid,jid,name,token=None):
-        match=re.fullmatch(r'(preview-[1-9]\.jpg|sticker-[1-9](?:-256\.png|\.png|\.webp)|grid\.png|stickers\.zip)',name)
+        match=re.fullmatch(r'(preview-[1-9]\.jpg|sticker-[1-9](?:-256\.png|-240\.(?:png|gif)|\.png|\.webp)|grid\.png|stickers\.zip)',name)
         if not match: raise RuleError('文件不存在',404)
         with self.store.transaction() as tx:
             job=tx.get('jobs',jid)
@@ -247,11 +247,24 @@ class Service:
                 if cell not in job['selected']: raise RuleError('这张还未解锁',403)
             folder=self.s.data_dir/'jobs'/jid
             path=folder/name
+            if not path.is_file() and re.fullmatch(r'sticker-[1-9]-240\.(png|gif)',name):
+                from PIL import Image
+                original=folder/f'{name[:9]}.png'
+                if original.is_file():
+                    with Image.open(original) as image:
+                        scaled=image.convert('RGBA').resize((240,240),Image.Resampling.LANCZOS)
+                    temporary=folder/f'.export-{uuid.uuid4().hex}'
+                    try:
+                        if name.endswith('.gif'):save_wechat_gif(scaled,temporary)
+                        else:scaled.save(temporary,format='PNG')
+                        os.replace(temporary,path)
+                    finally:
+                        temporary.unlink(missing_ok=True)
             if not path.is_file(): raise RuleError('文件已清理',410)
             return path
     def share_link(self,sid,jid,cell,variant):
         if type(cell)!=int or cell not in range(1,10):raise RuleError('贴纸不存在',404)
-        suffix={'png512':'.png','png256':'-256.png','webp512':'.webp'}.get(variant)
+        suffix={'png512':'.png','png256':'-256.png','png240':'-240.png','gif240':'-240.gif','webp512':'.webp'}.get(variant)
         if not suffix:raise RuleError('分享格式无效')
         name=f'sticker-{cell}{suffix}'
         self.authorize_file(sid,jid,name)

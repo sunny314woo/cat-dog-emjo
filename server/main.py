@@ -91,7 +91,8 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
     def catalog(request:Request):
         sid=identity(request)
         public_styles=[{k:v for k,v in s.items() if k!='prompt'} for s in CATALOG['styles'] if s['active']]
-        products=[dict(p,available=settings.mode=='live' and bool(os.getenv('PADDLE_WEBHOOK_SECRET')) and bool(os.getenv('PADDLE_PRICE_'+p['id']+'_ID'))) for p in PRODUCTS.values()]
+        products=[dict(p,price_id=os.getenv('PADDLE_PRICE_'+p['id']+'_ID') or None,
+                       available=settings.mode=='live' and bool(os.getenv('PADDLE_WEBHOOK_SECRET')) and bool(os.getenv('PADDLE_PRICE_'+p['id']+'_ID'))) for p in PRODUCTS.values()]
         return session_response(request,{'styles':public_styles,'theme':CATALOG['theme'],'products':products,
             'me':service.me(sid),'calibration':{'enabled':settings.calibration_enabled,'limit':settings.calibration_limit,'days':settings.calibration_days},
             'workflow':'personalized_styles_v1',
@@ -142,7 +143,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
     def asset(jid:str,name:str,request:Request,token:str|None=None):
         path=service.authorize_file(identity(request),jid,name,token)
         return FileResponse(path,filename=name if not name.startswith('preview-') else None,
-                            media_type='application/zip' if name.endswith('.zip') else 'image/png' if name.endswith('.png') else 'image/webp' if name.endswith('.webp') else 'image/jpeg')
+                            media_type='application/zip' if name.endswith('.zip') else 'image/png' if name.endswith('.png') else 'image/gif' if name.endswith('.gif') else 'image/webp' if name.endswith('.webp') else 'image/jpeg')
     @app.post(prefix+'/checkout')
     def checkout(body:CheckoutInput,request:Request):return service.checkout(identity(request),body.product,body.generation_id)
     @app.get(prefix+'/orders/{oid}')
