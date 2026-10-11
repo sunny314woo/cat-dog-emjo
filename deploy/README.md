@@ -1,5 +1,9 @@
 # 独立服务器部署
 
+## 2026-10-11 调试保留规则
+
+用户要求调试期生成图片先不删。私有配置 `EMJO_DEBUG_RETAIN_ASSETS=true` 临时暂停生成素材自动清理，READY作品继续可下载；不暂停验证码、撤回校准等隐私清理，原照片仍在制作完成后删除。最终保留周期待调试完成由用户确认，不先写死新的期限。关闭开关前先重新设置现存作品的expires和隐私文案，避免旧已过期素材立即被清理。具体透明文件证据、旧作品恢复与手机未验收项见 `docs/ai-handoff/transparent-export-debug-2026-10-11.md`。
+
 ## 2026-10-04 当前状态（优先于下方历史记录）
 
 正式页面为 `https://wisteriasoftware.uk/sticker/`，API 为 `https://api.wisteriasoftware.uk/sticker/api`。两阶段流程已部署，独立 `emjo.service` 运行 live 模式；真实模型与支付、邮件的完整验收仍未完成。后端工作目录 `/home/wisteria/emjo/current`，配置 `/home/wisteria/emjo/shared/server.env`，Python venv `/home/wisteria/emjo/venv`。

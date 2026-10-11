@@ -78,7 +78,7 @@ $('reveal-all').onclick=()=>{revealTimers.forEach(clearTimeout);revealTimers=[];
 async function download(name,share=false){if(!share){const link=node('a');link.href=API+`/files/${job.id}/${name}`;link.download=name;document.body.append(link);link.click();link.remove();return}const r=await fetch(API+`/files/${job.id}/${name}`,{credentials:'include'});if(!r.ok){let d=await r.json();throw new Error(d.error)}const blob=await r.blob();const file=new File([blob],name,{type:blob.type});if(share&&navigator.canShare?.({files:[file]})){try{await navigator.share({files:[file],title:'我的小心情'})}catch(e){if(e.name!=='AbortError')throw e}return}const url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);if(share)toast('已下载透明图片，可从聊天软件选择文件发送。')}
 action('zip-button',()=>download('stickers.zip'));action('grid-button',()=>download('grid.png'));action('demo-unlock',async()=>{job=await api('/demo/unlock/'+job.id,{});renderResult();toast('已解锁固定样例；没有产生付款。')});
 async function checkout(product){if(!me.email){pendingUnlock=product==='FIRST_PACK_UNLOCK';$('account-dialog').showModal();return}const result=await api('/checkout',{product,generation_id:product==='FIRST_PACK_UNLOCK'?job?.id:null});saved('emjo-order',result.order_id);await initPaddle();$('account-dialog').close();Paddle.Checkout.open({items:result.items,customData:result.customData,customer:result.customer,settings:{displayMode:'overlay',locale:document.documentElement.lang==='zh-CN'?'zh-Hans':'en'}})}
-action('unlock-button',()=>checkout('FIRST_PACK_UNLOCK'));$('account-button').onclick=()=>$('account-dialog').showModal();action('send-code',async()=>{const result=await api('/auth/code',{email:$('email-input').value});$('code-hint').textContent=result.demo_code?`本地样例验证码：${result.demo_code}（不会发送邮件）`:'验证码已发送，请检查收件箱和垃圾邮件。'});action('verify-code',async()=>{me=await api('/auth/verify',{email:$('email-input').value,code:$('code-input').value,referral:saved('emjo-ref')||null});renderMe();toast('邮箱已验证');if(pendingUnlock){pendingUnlock=false;$('account-dialog').close();await checkout('FIRST_PACK_UNLOCK')}});action('logout-button',async()=>{await api('/auth/logout',{});me=await api('/me');renderMe();$('account-dialog').close();if(job){job=null;show('maker');saved('emjo-job','')}});action('copy-invite',async()=>{const copied=await copyText(inviteURL(),$('invite-url'));toast(copied?'邀请链接已复制':'长按下方邀请链接，选择复制。')});action('withdraw-calibration',async()=>{await api(`/generations/${job.id}/calibration`,null,'DELETE');job.calibration=false;renderResult();toast('校准授权已撤回，校准副本已安排删除。')});$('privacy-button').onclick=()=>$('privacy-dialog').showModal();document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
+action('unlock-button',()=>checkout('FIRST_PACK_UNLOCK'));$('account-button').onclick=()=>$('account-dialog').showModal();action('send-code',async()=>{const result=await api('/auth/code',{email:$('email-input').value});$('code-hint').textContent=result.demo_code?`本地样例验证码：${result.demo_code}（不会发送邮件）`:'验证码已发送，请检查收件箱和垃圾邮件。'});action('verify-code',async()=>{me=await api('/auth/verify',{email:$('email-input').value,code:$('code-input').value,referral:saved('emjo-ref')||null});renderMe();toast('邮箱已验证');if(pendingUnlock){pendingUnlock=false;$('account-dialog').close();await checkout('FIRST_PACK_UNLOCK')}});action('logout-button',async()=>{await api('/auth/logout',{});me=await api('/me');renderMe();$('account-dialog').close();if(job){job=null;show('maker');saved('emjo-job','')}});action('copy-invite',async()=>{const copied=await copyText(inviteURL(),$('invite-url'));toast(copied?'邀请链接已复制':'长按下方邀请链接，选择复制。')});action('withdraw-calibration',async()=>{await api(`/generations/${job.id}/calibration`,null,'DELETE');job.calibration=false;renderResult();toast('校准授权已撤回，校准副本已安排删除。')});$('privacy-button').onclick=()=>{renderPrivacy();$('privacy-dialog').showModal()};document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 // Optional crop: the original remains the default. Crop only affects the first reference.
 let cropImage,cropRatio=1,zoom=1,offset={x:0,y:0},drag;
 const canvas=$('crop-canvas'),ctx=canvas.getContext('2d');
@@ -101,25 +101,36 @@ $('review-styles').onclick=()=>{style=job.style;show('maker');makerStep('style')
 $('return-result').onclick=()=>{style=job.style;displayJob()};
 async function saveFile(file){const url=URL.createObjectURL(file),a=node('a');a.href=url;a.download=file.name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
 
-let shareCell=null,shareData=null,shareFile=null,shareRequest=0;
+function renderPrivacy(){const retained=catalog?.debug_retain_assets||job?.debug_retained;$('privacy-retention').textContent=retained?'调试期间，生成图片暂不自动清理；最终保留周期将在调试完成后确定。原照片在制作完成后删除。':'原照片在制作完成或预览到期后删除；生成结果按下载窗口保留，到期后自动清理。';$('privacy-expiry').textContent=retained?'分享链接仍有独立有效期，可以重新生成。':job?.expires?`本套作品下载截止：${new Date(job.expires*1000).toLocaleString('zh-CN')}。`:''}
+let shareCell=null,shareData=null,shareFile=null,shareRequest=0,sharePreviewURL=null;
+function imageMime(bytes){const head=new Uint8Array(bytes,0,Math.min(bytes.byteLength,12));if(head.length>=8&&[137,80,78,71,13,10,26,10].every((v,i)=>head[i]===v))return 'image/png';const signature=String.fromCharCode(...head);if(signature.startsWith('GIF87a')||signature.startsWith('GIF89a'))return 'image/gif';if(signature.startsWith('RIFF')&&signature.slice(8,12)==='WEBP')return 'image/webp';throw new Error('下载文件不是有效图片，请刷新后重试')}
 async function openShare(cell){shareCell=cell;$('share-dialog').showModal();await prepareShare()}
 async function prepareShare(){
  const request=++shareRequest;shareData=null;shareFile=null;
- for(const id of ['copy-share','native-share','whatsapp-share','save-share'])$(id).disabled=true;
+ for(const id of ['copy-share','native-share','whatsapp-share','save-share','save-archive'])$(id).disabled=true;
+ $('share-preview').hidden=true;$('share-file-info').textContent='';
+ if(sharePreviewURL){URL.revokeObjectURL(sharePreviewURL);sharePreviewURL=null}
  $('share-status').textContent='正在准备透明单张…';
  try{
   const variant=$('share-format').value;
   const data=await api(`/generations/${job.id}/share`,{cell:shareCell,variant});
-  const response=await fetch(API+`/files/${job.id}/${data.name}`,{credentials:'include'});if(!response.ok)throw new Error('贴纸已失效，请刷新作品');
-  const blob=await response.blob();if(request!==shareRequest)return;
-  shareData=data;shareFile=new File([blob],data.name,{type:blob.type});
+  const response=await fetch(API+`/files/${job.id}/${data.name}`,{credentials:'include',cache:'no-store'});if(!response.ok)throw new Error('贴纸已失效，请刷新作品');
+  const bytes=await response.arrayBuffer();if(request!==shareRequest)return;
+  const mime=imageMime(bytes),file=new File([bytes],data.name,{type:mime});
+  if(data.sha256&&crypto.subtle){const digest=await crypto.subtle.digest('SHA-256',bytes);const hash=[...new Uint8Array(digest)].map(v=>v.toString(16).padStart(2,'0')).join('');if(hash!==data.sha256)throw new Error('下载文件与原文件不一致，请重新打开')}
+  const previewURL=URL.createObjectURL(file),image=new Image();image.src=previewURL;
+  try{await image.decode();if(request!==shareRequest){URL.revokeObjectURL(previewURL);return}const check=document.createElement('canvas');check.width=image.naturalWidth;check.height=image.naturalHeight;const context=check.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0);const pixels=context.getImageData(0,0,check.width,check.height).data;let transparent=false;for(let i=3;i<pixels.length;i+=4)if(pixels[i]===0){transparent=true;break}if(!transparent)throw new Error('这张文件没有透明背景，已暂停下载；请联系站点修复');$('share-file-info').textContent=`${mime.split('/')[1].toUpperCase()} · ${check.width}×${check.height} · 背景透明`;}catch(e){URL.revokeObjectURL(previewURL);throw e}
+  shareData=data;shareFile=file;sharePreviewURL=previewURL;$('share-image').src=previewURL;$('share-preview').hidden=false;
   $('share-status').textContent=data.local_only?'本地测试链接：仅本机可访问，正式部署后才能发给朋友。':`持链接者可下载这张贴纸；有效至 ${new Date(data.expires*1000).toLocaleString('zh-CN')}。`;
   $('share-url').value=data.url;
   for(const id of ['copy-share','native-share','save-share'])$(id).disabled=false;
+  $('save-archive').disabled=!data.archive_url;
   $('whatsapp-share').disabled=data.local_only;
- }catch(e){$('share-status').textContent=e.message}
+ }catch(e){if(request===shareRequest)$('share-status').textContent=e.message}
 }
 $('share-format').onchange=prepareShare;
+document.querySelectorAll('[name=share-background]').forEach(input=>input.onchange=()=>{$('share-preview').dataset.background=input.value});
+action('save-archive',async()=>{const data=shareData;if(!data?.archive_url)return;const response=await fetch(data.archive_url,{credentials:'include',cache:'no-store'});if(!response.ok)throw new Error('原文件暂时无法下载，请重新打开贴纸');await saveFile(new File([await response.blob()],data.name+'.zip',{type:'application/zip'}))});
 action('copy-share',async()=>{if(!shareData)return;const copied=await copyText(shareData.url,$('share-url'));toast(copied?'分享链接已复制':'长按下方分享链接，选择复制。')});
 action('save-share',async()=>{if(shareFile)await saveFile(shareFile)});
 $('native-share').onclick=async()=>{try{if(!shareFile)return;if(navigator.canShare?.({files:[shareFile]}))await navigator.share({files:[shareFile],title:'送你一张小表情'});else{await saveFile(shareFile);toast('此浏览器不支持文件分享，已下载单张文件。')}}catch(e){if(e.name!=='AbortError')toast('系统分享未完成，可下载后发送')}};

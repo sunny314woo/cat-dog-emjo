@@ -137,4 +137,7 @@ def save_wechat_gif(image,path):
     palette=rgb.quantize(colors=255,dither=Image.Dither.NONE)
     transparent=image.getchannel('A').point(lambda a:255 if a<128 else 0)
     palette.paste(255,mask=transparent)
-    palette.save(path,format='GIF',transparency=255,disposal=2,optimize=False)
+    # Reserve a real color-table entry for transparency even on low-color images.
+    colors=palette.getpalette()
+    palette.putpalette(colors+[0]*(768-len(colors)))
+    palette.save(path,format='GIF',transparency=255,background=255,disposal=2,optimize=False)

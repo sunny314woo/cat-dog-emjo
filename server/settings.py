@@ -14,6 +14,7 @@ class Settings:
     asset_url: str = field(default_factory=lambda: os.getenv('EMJO_ASSET_URL', ''))
     ttl_hours: int = field(default_factory=lambda: int(os.getenv('EMJO_FREE_ASSET_TTL_HOURS') or 24))
     paid_ttl_hours: int = field(default_factory=lambda: int(os.getenv('EMJO_PAID_DELIVERY_TTL_HOURS') or 24))
+    debug_retain_assets: bool = field(default_factory=lambda: os.getenv('EMJO_DEBUG_RETAIN_ASSETS') == 'true')
     calibration_enabled: bool = field(default_factory=lambda: os.getenv('EMJO_CALIBRATION_ENABLED') == 'true')
     calibration_limit: int = field(default_factory=lambda: int(os.getenv('EMJO_CALIBRATION_MAX_CASES') or 100))
     calibration_days: int = field(default_factory=lambda: int(os.getenv('EMJO_CALIBRATION_RETENTION_DAYS') or 30))

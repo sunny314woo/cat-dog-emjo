@@ -1,5 +1,7 @@
 from io import BytesIO
+import hashlib
 import uuid
+import zipfile
 from PIL import Image
 from fastapi.testclient import TestClient
 from server.main import create_app
@@ -26,14 +28,34 @@ def test_wechat_240_exports_are_transparent_and_keep_claim_permissions(tmp_path)
             response=client.get(f'/sticker/api/files/{jid}/sticker-1-240.{extension}')
             assert response.status_code==200
             assert response.headers['content-type'].startswith('image/'+extension)
+            assert 'no-transform' in response.headers['cache-control']
+            assert response.headers['x-content-type-options']=='nosniff'
             im=Image.open(BytesIO(response.content)).convert('RGBA')
             assert im.size==(240,240)
             assert im.getchannel('A').getextrema()==(0,255)
             assert client.get(f'/sticker/api/files/{jid}/sticker-3-240.{extension}').status_code==403
         link=client.post(f'/sticker/api/generations/{jid}/share',json={'cell':1,'variant':'gif240'}).json()
         assert link['name']=='sticker-1-240.gif'
+        assert link['has_transparency'] is True
+        assert (link['width'],link['height'])==(240,240)
         with TestClient(app) as stranger:
-            assert stranger.get(link['url']).status_code==200
+            original=stranger.get(link['url'])
+            assert original.status_code==200
+            assert hashlib.sha256(original.content).hexdigest()==link['sha256']
+            archive=stranger.get(link['archive_url'])
+            assert archive.status_code==200
+            assert archive.headers['content-type']=='application/zip'
+            with zipfile.ZipFile(BytesIO(archive.content)) as zipped:
+                assert zipped.namelist()==[link['name']]
+                assert zipped.read(link['name'])==original.content
+            assert stranger.get(link['archive_url'].replace('sticker-1','sticker-3')).status_code in (403,404)
+        assert client.get(f'/sticker/api/files/{jid}/sticker-3-240.gif.zip').status_code==403
+        assert client.get(f'/sticker/api/files/{jid}/stickers.zip').status_code==403
+        for variant,name in [('png512','sticker-1.png'),('png240','sticker-1-240.png'),('webp512','sticker-1.webp')]:
+            link=client.post(f'/sticker/api/generations/{jid}/share',json={'cell':1,'variant':variant}).json()
+            original=client.get(link['url']).content
+            with zipfile.ZipFile(BytesIO(client.get(link['archive_url']).content)) as zipped:
+                assert zipped.read(name)==original
 
 
 def test_wechat_gif_keeps_opaque_white_clothes_and_clear_background(tmp_path):

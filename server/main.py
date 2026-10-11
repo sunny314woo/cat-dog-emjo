@@ -75,7 +75,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
         response=await call_next(request)
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['Referrer-Policy']='same-origin'
-        if '/api/' in request.url.path:response.headers['Cache-Control']='private, no-store'
+        if '/api/' in request.url.path:response.headers.setdefault('Cache-Control','private, no-store')
         return response
     def identity(request):
         token,row=service.session(request.cookies.get('emjo_session'))
@@ -96,6 +96,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
         return session_response(request,{'styles':public_styles,'theme':CATALOG['theme'],'products':products,
             'me':service.me(sid),'calibration':{'enabled':settings.calibration_enabled,'limit':settings.calibration_limit,'days':settings.calibration_days},
             'workflow':'personalized_styles_v1',
+            'debug_retain_assets':settings.debug_retain_assets,
             'paddle':{'environment':os.getenv('PADDLE_ENVIRONMENT','sandbox'),'clientToken':os.getenv('PADDLE_CLIENT_TOKEN','')}})
     @app.get(prefix+'/me')
     def me(request:Request):return session_response(request,service.me(identity(request)))
@@ -143,6 +144,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
     def asset(jid:str,name:str,request:Request,token:str|None=None):
         path=service.authorize_file(identity(request),jid,name,token)
         return FileResponse(path,filename=name if not name.startswith('preview-') else None,
+                            headers={'Cache-Control':'private, no-store, no-transform','X-Content-Type-Options':'nosniff'},
                             media_type='application/zip' if name.endswith('.zip') else 'image/png' if name.endswith('.png') else 'image/gif' if name.endswith('.gif') else 'image/webp' if name.endswith('.webp') else 'image/jpeg')
     @app.post(prefix+'/checkout')
     def checkout(body:CheckoutInput,request:Request):return service.checkout(identity(request),body.product,body.generation_id)

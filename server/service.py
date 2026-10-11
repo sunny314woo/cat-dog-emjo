@@ -11,6 +11,7 @@ import secrets
 import shutil
 import time
 import uuid
+import zipfile
 from .catalog import CATALOG, EXPRESSIONS, PRODUCTS, STYLES, build_prompt, build_style_prompt
 from .imaging import prepare_pack, prepare_styles, read_upload, save_wechat_gif
 from .providers import ProviderError
@@ -98,12 +99,17 @@ class Service:
             raise RuleError('没有找到这份作品',404)
         return job
     def _public_job(self,job):
-        return {k:job.get(k) for k in ('id','state','style','created','expires','selected','unlocked','error','demo','calibration','captions','accessories','workflow','preview_styles')}
+        data={k:job.get(k) for k in ('id','state','style','created','expires','selected','unlocked','error','demo','calibration','captions','accessories','workflow','preview_styles')}
+        data['debug_retained']=self.s.debug_retain_assets
+        if self.s.debug_retain_assets and job['state']=='READY':data['expires']=None
+        return data
+    def _expired(self,job):
+        return bool(job.get('expires') and job['expires']<=self.clock() and not(self.s.debug_retain_assets and job['state']=='READY'))
     def job(self,sid,jid):
         with self.store.transaction() as tx:
             job=self._owned(tx,sid,jid)
             data=self._public_job(job)
-            if job.get('expires') and job['expires']<=self.clock(): data['state']='EXPIRED'
+            if self._expired(job): data['state']='EXPIRED'
             data['cells']=EXPRESSIONS
             return data
     def create_job(self,sid,request_id,photos,style,captions=True,accessories=True,consent=False,preview=False):
@@ -201,7 +207,10 @@ class Service:
             if job['state']!='STYLE_READY':raise RuleError('制作中不能更换照片，请等待当前步骤完成',409)
             self._release_reservation(tx,job)
             job.update(state='CANCELLED',expires=self.clock());tx.put('jobs',jid,job)
-        shutil.rmtree(self.s.data_dir/'jobs'/jid,ignore_errors=True)
+        folder=self.s.data_dir/'jobs'/jid
+        if self.s.debug_retain_assets:
+            for path in folder.glob('input-*.jpg'):path.unlink(missing_ok=True)
+        else:shutil.rmtree(folder,ignore_errors=True)
         return {'ok':True}
 
     def preview_file(self,sid,jid,index):
@@ -210,7 +219,7 @@ class Service:
             job=self._owned(tx,sid,jid)
             if job.get('workflow')!='personalized_styles_v1' or job['state'] not in ('STYLE_READY','QUEUED','GENERATING','PROCESSING','READY'):
                 raise RuleError('风格预览尚未准备好',409)
-            if job.get('expires') and job['expires']<=self.clock():raise RuleError('风格预览已过期',410)
+            if self._expired(job):raise RuleError('风格预览已过期',410)
         path=self.s.data_dir/'jobs'/jid/f'style-choice-{index}.jpg'
         if not path.is_file():raise RuleError('风格预览已清理',410)
         return path
@@ -226,9 +235,12 @@ class Service:
             return self._public_job(job)
     def _ready(self,job):
         if job['state']!='READY': raise RuleError('作品还没有准备好',409)
-        if job['expires']<=self.clock(): raise RuleError('作品已过期，请使用之前保存的副本',410)
+        if self._expired(job): raise RuleError('作品已过期，请使用之前保存的副本',410)
     def authorize_file(self,sid,jid,name,token=None):
-        match=re.fullmatch(r'(preview-[1-9]\.jpg|sticker-[1-9](?:-256\.png|-240\.(?:png|gif)|\.png|\.webp)|grid\.png|stickers\.zip)',name)
+        archive=name.endswith('.zip') and name!='stickers.zip'
+        asset_name=name[:-4] if archive else name
+        match=re.fullmatch(r'(preview-[1-9]\.jpg|sticker-[1-9](?:-256\.png|-240\.(?:png|gif)|\.png|\.webp)|grid\.png|stickers\.zip)',asset_name)
+        if archive and not asset_name.startswith('sticker-'):raise RuleError('文件不存在',404)
         if not match: raise RuleError('文件不存在',404)
         with self.store.transaction() as tx:
             job=tx.get('jobs',jid)
@@ -241,38 +253,62 @@ class Service:
                 except (ValueError,TypeError): pass
             if not signed:self._owned(tx,sid,jid)
             self._ready(job)
-            if name.startswith('preview-') and not signed: pass
+            if asset_name.startswith('preview-') and not signed: pass
             elif not job['unlocked']:
-                cell=int(name[8]) if name.startswith('sticker-') else None
+                cell=int(asset_name[8]) if asset_name.startswith('sticker-') else None
                 if cell not in job['selected']: raise RuleError('这张还未解锁',403)
             folder=self.s.data_dir/'jobs'/jid
-            path=folder/name
-            if not path.is_file() and re.fullmatch(r'sticker-[1-9]-240\.(png|gif)',name):
+            path=folder/asset_name
+            needs_export=not path.is_file()
+            if asset_name.endswith('-240.gif') and path.is_file():
                 from PIL import Image
-                original=folder/f'{name[:9]}.png'
+                with Image.open(path) as image:needs_export=image.info.get('background')!=255
+            if needs_export and re.fullmatch(r'sticker-[1-9]-240\.(png|gif)',asset_name):
+                from PIL import Image
+                original=folder/f'{asset_name[:9]}.png'
                 if original.is_file():
                     with Image.open(original) as image:
                         scaled=image.convert('RGBA').resize((240,240),Image.Resampling.LANCZOS)
                     temporary=folder/f'.export-{uuid.uuid4().hex}'
                     try:
-                        if name.endswith('.gif'):save_wechat_gif(scaled,temporary)
+                        if asset_name.endswith('.gif'):save_wechat_gif(scaled,temporary)
                         else:scaled.save(temporary,format='PNG')
                         os.replace(temporary,path)
                     finally:
                         temporary.unlink(missing_ok=True)
             if not path.is_file(): raise RuleError('文件已清理',410)
+            if archive:
+                target=folder/name
+                if not target.is_file() or target.stat().st_mtime_ns<path.stat().st_mtime_ns:
+                    temporary=folder/f'.export-{uuid.uuid4().hex}'
+                    try:
+                        with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED) as output:output.write(path,asset_name)
+                        os.replace(temporary,target)
+                    finally:temporary.unlink(missing_ok=True)
+                path=target
             return path
     def share_link(self,sid,jid,cell,variant):
         if type(cell)!=int or cell not in range(1,10):raise RuleError('贴纸不存在',404)
         suffix={'png512':'.png','png256':'-256.png','png240':'-240.png','gif240':'-240.gif','webp512':'.webp'}.get(variant)
         if not suffix:raise RuleError('分享格式无效')
         name=f'sticker-{cell}{suffix}'
-        self.authorize_file(sid,jid,name)
+        path=self.authorize_file(sid,jid,name)
         with self.store.transaction() as tx:
-            job=self._owned(tx,sid,jid);expires=min(job['expires'],self.clock()+86400)
+            job=self._owned(tx,sid,jid);expires=self.clock()+86400
+            if not self.s.debug_retain_assets:expires=min(job['expires'],expires)
         token=self.file_token(jid,name,expires)
-        return {'url':(self.s.asset_url or self.s.public_url).rstrip('/')+'/api/files/'+jid+'/'+name+'?token='+token,
-                'expires':expires,'name':name,'local_only':self.s.mode=='demo'}
+        base=(self.s.asset_url or self.s.public_url).rstrip('/')+'/api/files/'+jid+'/'
+        archive_name=name+'.zip'
+        from PIL import Image
+        with Image.open(path) as image:
+            alpha=image.convert('RGBA').getchannel('A')
+            transparent=alpha.getextrema()[0]<255
+            width,height=image.size
+        return {'url':base+name+'?token='+token,
+                'archive_url':base+archive_name+'?token='+self.file_token(jid,archive_name,expires),
+                'expires':expires,'name':name,'local_only':self.s.mode=='demo',
+                'width':width,'height':height,'has_transparency':transparent,
+                'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
 
     def file_token(self,jid,name,expires):
         stamp=str(int(expires));return stamp+'.'+self.digest(jid+name+stamp)
@@ -330,7 +366,7 @@ class Service:
             user=tx.get('users',order['user_id'])
             if order['product']=='FIRST_PACK_UNLOCK':
                 job=tx.get('jobs',order['job_id'])
-                if not job or job['state']!='READY' or job['expires']<=self.clock() or job['unlocked'] or user['paid_once']:
+                if not job or job['state']!='READY' or self._expired(job) or job['unlocked'] or user['paid_once']:
                     order['state']='REFUND_REQUIRED'
                 else:
                     job.update(unlocked=True,user_id=user['id'],expires=self.clock()+self.s.paid_ttl_hours*3600)
@@ -442,13 +478,15 @@ class Service:
                 for path in folder.glob('input-*.jpg'):path.unlink(missing_ok=True)
         return True
     def maintenance(self):
-        now=self.clock(); to_delete=[]
+        now=self.clock(); to_delete=[];uploads_to_delete=[]
         with self.store.transaction() as tx:
             for job in tx.all('jobs'):
-                if job.get('expires') and job['expires']<=now and job['state'] not in ('GENERATING','PROCESSING','PREVIEW_GENERATING'):
+                if self._expired(job) and job['state'] not in ('GENERATING','PROCESSING','PREVIEW_GENERATING'):
                     if job['state'] in ('STYLE_READY','PREVIEW_QUEUED'):self._release_reservation(tx,job)
                     job['state']='EXPIRED';job.pop('prompt',None);job.pop('final_prompts',None);tx.put('jobs',job['id'],job)
-                    to_delete.append(self.s.data_dir/'jobs'/job['id'])
+                    folder=self.s.data_dir/'jobs'/job['id']
+                    if self.s.debug_retain_assets:uploads_to_delete.extend(folder.glob('input-*.jpg'))
+                    else:to_delete.append(folder)
                 # Uncertain upstream outcomes are surfaced for recovery, never blindly reissued.
                 if job['state'] in ('GENERATING','PROCESSING','PREVIEW_GENERATING') and job.get('lease_until',0)<now:
                     preview=job['state']=='PREVIEW_GENERATING'
@@ -458,7 +496,7 @@ class Service:
                     else:
                         job.update(state='FAILED',error='制作中断，机会已退回。请重新尝试。',expires=now+86400)
                         self._release_reservation(tx,job)
-                        to_delete.append(self.s.data_dir/'jobs'/job['id'])
+                        if not self.s.debug_retain_assets:to_delete.append(self.s.data_dir/'jobs'/job['id'])
                     tx.put('jobs',job['id'],job)
             for case in tx.all('calibration'):
                 if case['expires']<=now:
@@ -469,6 +507,7 @@ class Service:
             for code in tx.all('codes'):
                 if code['expires']+86400<=now:tx.delete('codes',code['id'])
         for folder in to_delete:shutil.rmtree(folder,ignore_errors=True)
+        for path in uploads_to_delete:path.unlink(missing_ok=True)
     def mail_once(self):
         now=self.clock(); mail=None
         with self.store.transaction() as tx:
@@ -478,9 +517,9 @@ class Service:
                 job=tx.get('jobs',mail['job_id']);user=tx.get('users',job['user_id'])
         if not mail:return
         try:
-            if not job['unlocked'] or job['expires']<=now:raise RuleError('交付已失效')
+            if not job['unlocked'] or self._expired(job):raise RuleError('交付已失效')
             path=self.s.data_dir/'jobs'/job['id']/'stickers.zip'
-            token=self.file_token(job['id'],'stickers.zip',job['expires'])
+            token=self.file_token(job['id'],'stickers.zip',now+86400 if self.s.debug_retain_assets else job['expires'])
             link=(self.s.asset_url or self.s.public_url).rstrip('/')+'/api/files/'+job['id']+'/stickers.zip?token='+token
             content=path.read_bytes();attachment=content if len(content)<=10*1024*1024 else None
             self.providers.email(user['email'],'你的九种小心情，准备好啦',
