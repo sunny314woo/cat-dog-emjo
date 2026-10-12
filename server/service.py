@@ -74,12 +74,27 @@ class Service:
                     user={'id':key,'email':email,'trial_used':False,'paid_once':False,
                           'referrer':ref_id,'referral_code':secrets.token_urlsafe(9),'created':now}
                     tx.put('referrals',user['referral_code'],{'user_id':key})
+                account_used_trial=bool(user.get('trial_used') or user.get('paid_once'))
                 user['trial_used']=user['trial_used'] or session['trial_used']
                 session['user_id']=key
                 tx.put('users',key,user); tx.put('sessions',sid,session)
                 for job in tx.all('jobs'):
                     if job['session_id']==sid and not job.get('user_id'):
-                        job['user_id']=key;tx.put('jobs',job['id'],job)
+                        job['user_id']=key
+                        if account_used_trial and job.get('free') and job['state'] in (
+                            'READY','QUEUED','GENERATING','PROCESSING',
+                            'PREVIEW_QUEUED','PREVIEW_GENERATING','STYLE_READY'):
+                            job['free']=False
+                            grants=sorted([g for g in tx.all('grants') if g['user_id']==key and
+                                           g['available']>0 and not g['revoked']],key=lambda g:g['created'])
+                            if grants:
+                                grant=grants[0];grant['available']-=1
+                                if job['state']=='READY':
+                                    grant['consumed']+=1
+                                    job['expires']=max(job.get('expires') or 0,now+self.s.paid_ttl_hours*3600)
+                                tx.put('grants',grant['id'],grant);job.update(grant_id=grant['id'],unlocked=True)
+                                if job['state']=='READY':self._queue_delivery(tx,job)
+                        tx.put('jobs',job['id'],job)
         if error: raise error
         return self.me(sid)
     def me(self,sid):
@@ -99,7 +114,7 @@ class Service:
             raise RuleError('没有找到这份作品',404)
         return job
     def _public_job(self,job):
-        data={k:job.get(k) for k in ('id','state','style','created','expires','selected','unlocked','error','demo','calibration','captions','accessories','workflow','preview_styles')}
+        data={k:job.get(k) for k in ('id','state','style','created','expires','selected','unlocked','free','error','demo','calibration','captions','accessories','workflow','preview_styles')}
         data['debug_retained']=self.s.debug_retain_assets
         if self.s.debug_retain_assets and job['state']=='READY':data['expires']=None
         return data
@@ -183,6 +198,14 @@ class Service:
             if job['state']!='STYLE_READY':raise RuleError('请先完成风格预览',409)
             if job['expires']<=self.clock():raise RuleError('风格预览已过期，请重新上传',410)
             if style not in job['final_prompts']:raise RuleError('请选择本次生成的风格')
+            if not job.get('free') and not job.get('grant_id'):
+                session=tx.get('sessions',sid)
+                owner=tx.get('users',session['user_id']) if session and session.get('user_id') else None
+                grants=sorted([g for g in tx.all('grants') if owner and g['user_id']==owner['id'] and
+                               g['available']>0 and not g['revoked']],key=lambda g:g['created'])
+                if not grants:raise RuleError('这份作品已关联到邮箱，但该邮箱的免费体验已用过。请先购买制作次数再继续生成。',402)
+                grant=grants[0];grant['available']-=1;tx.put('grants',grant['id'],grant)
+                job.update(grant_id=grant['id'],unlocked=True)
             index=next(s['index'] for s in job['preview_styles'] if s['id']==style)
             job.update(style=style,style_index=index,prompt=job['final_prompts'][style],state='QUEUED',expires=None)
             tx.put('jobs',jid,job)
@@ -316,15 +339,18 @@ class Service:
         if tx.get('grants',gid):return
         tx.put('grants',gid,{'id':gid,'user_id':uid,'available':quantity,'quantity':quantity,'consumed':0,
                             'revoked':False,'source':source,'created':self.clock()})
-    def checkout(self,sid,product,jid=None):
+    def checkout(self,sid,product,jid=None,order_id=None):
         if product not in PRODUCTS:raise RuleError('商品不存在',404)
-        session,user,_=self.current(sid)
+        _,user,_=self.current(sid)
         if not user:raise RuleError('请先验证邮箱',401)
         if self.s.mode=='demo': raise RuleError('当前是示例体验，不会收款；真实支付待配置',503)
         price=os.getenv('PADDLE_PRICE_'+product+'_ID','')
         if not price or not os.getenv('PADDLE_PRODUCT_ID') or not os.getenv('PADDLE_WEBHOOK_SECRET'):raise RuleError('支付通知配置尚未完成，暂不能付款',503)
         now=self.clock(); oid=uuid.uuid4().hex
         with self.store.transaction() as tx:
+            current_session=tx.get('sessions',sid)
+            user=tx.get('users',current_session['user_id']) if current_session and current_session.get('user_id') else None
+            if not user:raise RuleError('请先验证邮箱',401)
             if product=='FIRST_PACK_UNLOCK':
                 job=self._owned(tx,sid,jid);self._ready(job)
                 if not (self.s.data_dir/'jobs'/jid/'stickers.zip').is_file():raise RuleError('作品文件暂时不可交付，请联系站点管理员',409)
@@ -333,17 +359,47 @@ class Service:
                 # Keep the existing asset alive during checkout, without reviving expired files.
                 job['expires']=max(job['expires'],now+3600);tx.put('jobs',jid,job)
             existing=[o for o in tx.all('orders') if o['user_id']==user['id'] and o['state']=='PENDING']
-            same=next((o for o in existing if o['product']==product and o['job_id']==jid and o.get('checkout_mode')=='paddlejs'),None)
+            same=next((o for o in existing if o['id']==order_id and o['product']==product and
+                       o.get('job_id')==jid and o.get('checkout_mode')=='paddlejs'),None) if order_id else None
+            if order_id and not same:raise RuleError('这笔订单已完成，请刷新订单记录后重试',409)
             if same:
                 oid=same['id']
             else:
-                if existing:raise RuleError('已有一笔待完成订单，请先完成或稍后重试',409)
-                order={'id':oid,'user_id':user['id'],'job_id':jid,'product':product,'price_id':price,
-                       'state':'PENDING','transaction_id':None,'created':now,'checkout_mode':'paddlejs'}
-                tx.put('orders',oid,order)
+                same=next((o for o in existing if o['product']==product and o.get('job_id')==jid and
+                           o.get('checkout_mode')=='paddlejs'),None)
+                if same:
+                    oid=same['id']
+                elif product=='FIRST_PACK_UNLOCK' and any(o['product']=='FIRST_PACK_UNLOCK' and
+                        o.get('checkout_mode')=='paddlejs' for o in existing):
+                    raise RuleError('已有一笔首次解锁订单尚未完成。请到设置里的“我的订单”继续原作品，避免重复扣款。',409)
+                else:
+                    order={'id':oid,'user_id':user['id'],'job_id':jid,'product':product,'price_id':price,
+                           'state':'PENDING','transaction_id':None,'created':now,'checkout_mode':'paddlejs'}
+                    tx.put('orders',oid,order)
         # Paddle.js creates the transaction. Only signed, API-verified completion grants delivery.
         return {'order_id':oid,'items':[{'priceId':price,'quantity':1}],
                 'customData':{'emjo_order_id':oid},'customer':{'email':user['email']}}
+
+    def account_history(self,sid):
+        _,user,_=self.current(sid)
+        if not user:raise RuleError('请先验证邮箱',401)
+        with self.store.transaction() as tx:
+            jobs=sorted([j for j in tx.all('jobs') if j.get('user_id')==user['id']],
+                        key=lambda j:j['created'],reverse=True)
+            orders=sorted([o for o in tx.all('orders') if o['user_id']==user['id']],
+                          key=lambda o:o['created'],reverse=True)
+            history_jobs=[]
+            for job in jobs[:30]:
+                mail=tx.get('mail','delivery-'+job['id'])
+                history_jobs.append({'id':job['id'],'state':'EXPIRED' if self._expired(job) else job['state'],
+                    'created':job['created'],'style':job.get('style'),'selected':job.get('selected',[]),
+                    'unlocked':bool(job.get('unlocked')),'free':bool(job.get('free')),
+                    'demo':bool(job.get('demo')),'delivery_state':mail.get('state') if mail else None})
+            history_orders=[{'id':o['id'],'product':o['product'],'state':o['state'],
+                'generation_id':o.get('job_id'),'created':o['created'],
+                'delivery_state':(tx.get('mail','delivery-'+o['job_id']) or {}).get('state') if o.get('job_id') else None}
+                for o in orders[:30]]
+        return {'jobs':history_jobs,'orders':history_orders}
     def enqueue_payment(self,event):
         if not isinstance(event,dict):raise RuleError('Invalid event')
         eid=event.get('event_id');kind=event.get('event_type');data=event.get('data',{})
@@ -485,11 +541,11 @@ class Service:
             prepare_pack(output,folder,job['captions'],os.getenv('EMJO_BACKGROUND_REMOVAL_MODE') or 'alpha_only',strict_boundaries=self.s.mode!='demo')
             with self.store.transaction() as tx:
                 current=tx.get('jobs',job['id'])
-                if job['grant_id']:
-                    grant=tx.get('grants',job['grant_id'])
+                if current.get('grant_id'):
+                    grant=tx.get('grants',current['grant_id'])
                     if grant['revoked']:raise RuleError('该生成权益已退款')
                     grant['consumed']+=1;tx.put('grants',grant['id'],grant)
-                current.update(state='READY',expires=self.clock()+3600*(self.s.paid_ttl_hours if job['unlocked'] else self.s.ttl_hours))
+                current.update(state='READY',expires=self.clock()+3600*(self.s.paid_ttl_hours if current['unlocked'] else self.s.ttl_hours))
                 if current['consent'] and self.s.calibration_enabled:
                     counter=tx.get('settings','calibration') or {'count':0}
                     if counter['count']<self.s.calibration_limit:

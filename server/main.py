@@ -29,6 +29,7 @@ class ShareInput(BaseModel):
 class CheckoutInput(BaseModel):
     product: str
     generation_id: str | None = None
+    order_id: str | None = Field(default=None,max_length=64)
 class FeedbackInput(BaseModel):
     category: str = Field(max_length=80)
     description: str = Field(default='',max_length=1000)
@@ -103,6 +104,8 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
             'paddle':{'environment':os.getenv('PADDLE_ENVIRONMENT','sandbox'),'clientToken':os.getenv('PADDLE_CLIENT_TOKEN','')}})
     @app.get(prefix+'/me')
     def me(request:Request):return session_response(request,service.me(identity(request)))
+    @app.get(prefix+'/account/history')
+    def account_history(request:Request):return service.account_history(identity(request))
     @app.post(prefix+'/auth/code')
     def code(body:EmailInput,request:Request):return session_response(request,service.request_code(identity(request),body.email))
     @app.post(prefix+'/auth/verify')
@@ -150,7 +153,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
                             headers={'Cache-Control':'private, no-store, no-transform','X-Content-Type-Options':'nosniff'},
                             media_type='application/zip' if name.endswith('.zip') else 'image/png' if name.endswith('.png') else 'image/gif' if name.endswith('.gif') else 'image/webp' if name.endswith('.webp') else 'image/jpeg')
     @app.post(prefix+'/checkout')
-    def checkout(body:CheckoutInput,request:Request):return service.checkout(identity(request),body.product,body.generation_id)
+    def checkout(body:CheckoutInput,request:Request):return service.checkout(identity(request),body.product,body.generation_id,body.order_id)
     @app.get(prefix+'/orders/{oid}')
     def order(oid:str,request:Request):
         _,user,_=service.current(identity(request))

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../app.js'), 'utf8');
 const monitor = source.slice(source.indexOf('let paddleReady,'), source.indexOf('function initPaddle()'));
+const paddleInit = source.slice(source.indexOf('function initPaddle()'), source.indexOf('async function addPhotos'));
 
 function page(responses, storage = new Map([['emjo-order', 'order-1']])) {
   const status = {textContent: '', hidden: true};
@@ -65,4 +66,25 @@ test('logout cancels an in-flight response before private order details render',
   assert.equal(p.status.textContent, '');
   assert.equal(p.timers.length, 0);
   assert.equal(p.storage.get('emjo-job'), undefined);
+});
+
+test('Paddle initialization failures reject visibly and can be retried', async () => {
+  let script;
+  const context = vm.createContext({
+    catalog: {paddle: {clientToken: 'test-token', environment: 'live'}},
+    window: {},
+    document: {createElement: () => (script = {}), head: {append: item => { script = item; }}},
+    paymentStatus: () => {}, saved: () => '', monitorPayment: () => {},
+    Error, Promise,
+  });
+  vm.runInContext('let paddleReady;' + paddleInit, context);
+  const pending = vm.runInContext('initPaddle()', context);
+  script.onload();
+  await assert.rejects(pending, /支付组件没有正确加载/);
+  assert.equal(vm.runInContext('paddleReady', context), null);
+});
+
+test('checkout errors retain a visible recovery message', () => {
+  assert.match(source, /paymentStatus\(e\.message\|\|'结账暂时无法启动，请稍后重试'\)/);
+  assert.match(source, /e\.status===409\)\{\$\('account-dialog'\)\.showModal\(\);refreshHistory\(\)\}/);
 });

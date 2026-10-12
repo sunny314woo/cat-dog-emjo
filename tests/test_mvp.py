@@ -10,6 +10,7 @@ from server.store import DemoStore
 from server.providers import Providers
 from server.main import create_app
 from server.catalog import build_prompt, STYLES
+from server.service import RuleError
 
 @pytest.fixture
 def setup(tmp_path):
@@ -55,8 +56,12 @@ def test_otp_email_uniqueness_and_logout(setup):
     service.clock=lambda:__import__('time').time()+61
     assert client.post(base+'/auth/code',json={'email':'owner@example.com'}).status_code==200
     assert client.post(base+'/auth/verify',json={'email':'OWNER@example.com','code':'123456'}).json()['email']=='owner@example.com'
+    history=client.get(base+'/account/history')
+    assert history.status_code==200
+    assert any(item['id']==jid for item in history.json()['jobs'])
     client.post(base+'/auth/logout',json={})
     assert client.get(base+'/generations/'+jid).status_code==404
+    assert client.get(base+'/account/history').status_code==401
 
 def test_public_allowlist_and_prompt(setup):
     client,service,catalog=setup
@@ -353,6 +358,107 @@ def test_paddlejs_checkout_reuses_order_and_does_not_need_write_api(setup,monkey
         assert len(tx.all('orders'))==1
         assert tx.get('orders',first['order_id'])['state']=='PENDING'
     assert service.me(sid)['pack_balance']==0
+
+
+def test_existing_account_trial_does_not_grant_second_anonymous_free_claim(setup):
+    client,service,catalog=setup
+    sid,user=signed_in(service,'repeat@example.com')
+    with service.store.transaction() as tx:
+        account=tx.get('users',user['id']);account['trial_used']=True;tx.put('users',user['id'],account)
+        tx.put('jobs','old-trial',{'id':'old-trial','session_id':sid,'user_id':user['id'],
+            'state':'READY','free':True,'unlocked':False,'selected':[1,2],'created':1})
+    # Model the customer's second device: an anonymous job is associated during OTP login.
+    _,session=service.session();other_sid=session['id']
+    anonymous=service.create_job(other_sid,str(uuid.uuid4()),[(ROOT/'assets/cat-photo.png').read_bytes()],catalog['styles'][0]['id'])
+    service.clock=lambda:__import__('time').time()+61
+    service.request_code(other_sid,'repeat@example.com')
+    service.verify_code(other_sid,'repeat@example.com','123456')
+    merged=service.job(other_sid,anonymous['id'])
+    assert merged['free'] is False
+    assert merged['unlocked'] is False
+    assert service.account_history(other_sid)['jobs'][0]['id']==anonymous['id']
+    with service.store.transaction() as tx:
+        row=tx.get('jobs',anonymous['id']);row['state']='READY';tx.put('jobs',row['id'],row)
+    with pytest.raises(RuleError) as error:
+        service.claim(other_sid,anonymous['id'],[1,2])
+    assert error.value.status==403
+
+
+def test_existing_pack_is_reserved_when_anonymous_job_is_claimed_during_generation(setup):
+    _,service,catalog=setup
+    _,user=signed_in(service,'pack-owner@example.com')
+    with service.store.transaction() as tx:
+        account=tx.get('users',user['id']);account['trial_used']=True;tx.put('users',user['id'],account)
+        tx.put('grants','existing-pack',{'id':'existing-pack','user_id':user['id'],'available':1,
+            'quantity':1,'consumed':0,'revoked':False,'source':'test','created':1})
+    _,session=service.session();sid=session['id']
+    job=service.create_job(sid,str(uuid.uuid4()),[(ROOT/'assets/cat-photo.png').read_bytes()],catalog['styles'][0]['id'])
+    service.clock=lambda:__import__('time').time()+61
+    service.request_code(sid,'pack-owner@example.com')
+    def attach_during_provider(*args):
+        service.verify_code(sid,'pack-owner@example.com','123456')
+        return (ROOT/'assets/cat-grid.png').read_bytes()
+    service.providers.generate=attach_during_provider
+    service.work_once()
+    with service.store.transaction() as tx:
+        grant=tx.get('grants','existing-pack');row=tx.get('jobs',job['id'])
+    assert (grant['available'],grant['consumed'])==(0,1)
+    assert row['grant_id']=='existing-pack' and row['free'] is False and row['unlocked'] is True
+
+
+def test_pack_purchased_after_login_can_resume_anonymous_style_preview(setup):
+    _,service,catalog=setup
+    _,user=signed_in(service,'style-pack-owner@example.com')
+    with service.store.transaction() as tx:
+        account=tx.get('users',user['id']);account['trial_used']=True;tx.put('users',user['id'],account)
+    _,session=service.session();sid=session['id']
+    preview=service.create_job(sid,str(uuid.uuid4()),[(ROOT/'assets/cat-photo.png').read_bytes()],
+                               None,preview=True)
+    service.clock=lambda:__import__('time').time()+61
+    service.request_code(sid,'style-pack-owner@example.com')
+    service.verify_code(sid,'style-pack-owner@example.com','123456')
+    with service.store.transaction() as tx:
+        row=tx.get('jobs',preview['id']);row['state']='STYLE_READY';tx.put('jobs',row['id'],row)
+        tx.put('grants','later-pack',{'id':'later-pack','user_id':user['id'],'available':1,
+            'quantity':1,'consumed':0,'revoked':False,'source':'test','created':2})
+    selected=service.choose_style(sid,preview['id'],catalog['styles'][0]['id'])
+    assert selected['state']=='QUEUED' and selected['unlocked'] is True
+    with service.store.transaction() as tx:
+        assert tx.get('grants','later-pack')['available']==0
+
+
+def test_pending_unlock_orders_stay_bound_per_work_and_are_resumable(setup,monkeypatch):
+    _,service,_=setup
+    sid,user=signed_in(service,'orders@example.com')
+    service.s.mode='live'
+    monkeypatch.setenv('PADDLE_PRICE_FIRST_PACK_UNLOCK_ID','pri_first')
+    monkeypatch.setenv('PADDLE_PRICE_PACK_1_ID','pri_one')
+    monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
+    monkeypatch.setenv('PADDLE_WEBHOOK_SECRET','test-secret')
+    for jid in ('work-old','work-new'):
+        folder=service.s.data_dir/'jobs'/jid;folder.mkdir(parents=True)
+        (folder/'stickers.zip').write_bytes(b'zip')
+        with service.store.transaction() as tx:
+            tx.put('jobs',jid,{'id':jid,'session_id':sid,'user_id':user['id'],'state':'READY',
+                'free':True,'unlocked':False,'selected':[],'expires':service.clock()+86400,'created':service.clock()})
+    now=[100000]
+    service.clock=lambda:now[0]
+    old=service.checkout(sid,'FIRST_PACK_UNLOCK','work-old')
+    pack=service.checkout(sid,'PACK_1')
+    assert pack['order_id']!=old['order_id']
+    with pytest.raises(RuleError) as early:
+        service.checkout(sid,'FIRST_PACK_UNLOCK','work-new')
+    assert early.value.status==409
+    now[0]+=86401
+    with pytest.raises(RuleError) as late:
+        service.checkout(sid,'FIRST_PACK_UNLOCK','work-new')
+    assert late.value.status==409
+    assert service.checkout(sid,'FIRST_PACK_UNLOCK','work-old',old['order_id'])==old
+    with service.store.transaction() as tx:
+        assert tx.get('orders',old['order_id'])['job_id']=='work-old'
+        assert tx.get('orders',pack['order_id'])['product']=='PACK_1'
+    history=service.account_history(sid)
+    assert {o['id'] for o in history['orders']}=={old['order_id'],pack['order_id']}
 
 
 def test_api_cors_only_allows_product_origin(tmp_path):

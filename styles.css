@@ -61,3 +61,4 @@ body{width:100%}main,.studio,#result-view,#maker{min-width:0}
 .background-swatch.mint{background:#3dbfb5}.background-swatch.dark{background:#292d32}
 .share-backgrounds input:checked+.background-swatch{box-shadow:0 0 0 3px #b47128}.share-backgrounds input:focus-visible+.background-swatch{outline:2px solid #292d32;outline-offset:5px}
 #share-file-info{text-align:center;font-size:13px;min-height:21px}
+.history-section{margin:18px 0}.history-list{display:grid;gap:8px;margin-top:9px}.history-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.history-copy{min-width:0;display:grid;gap:4px}.history-copy strong{font-size:12px}.history-copy small{font-size:10px;line-height:1.5;color:var(--muted)}.history-row .button{min-height:34px;padding:7px 10px;font-size:11px;flex:none}
