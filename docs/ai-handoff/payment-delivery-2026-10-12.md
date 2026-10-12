@@ -20,6 +20,8 @@
 
 代码部署后需重启独立 emjo.service，核对公网 catalog 的 payment_workflow。sudo 密码由用户在服务器终端输入。未重启前不得称新版后端生效。
 
+本轮发布：独立项目 main 提交 e4e1208 已推送 GitHub；官网源码提交 2183f5a 的同步工作流 38223564019 成功，公网 app.js 与 index.html 字节哈希均与本地一致，缓存版本20261012-payment。服务器四个新文件已逐一校验、备份并原子替换，备份位于 /home/wisteria/emjo/backups/payment-delivery-20261012。sudo -n 重启返回需要密码，最近进程 MainPID=4072151、公网/loopback catalog 无新 payment_workflow，故后端仍待用户重启后核验，不能在此状态开始首笔真实付款验收。
+
 真实付款、Paddle 实际通知投递、实际邮箱收件仍未验收。原数据库只读检查：一笔 PENDING 订单，无支付确认事件与交付邮件；发件域名已验证。未新增付费生图或代付。
 
 ## 下一步真实验收
