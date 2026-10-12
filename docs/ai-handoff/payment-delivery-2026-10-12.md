@@ -22,6 +22,8 @@
 
 本轮发布：独立项目 main 提交 e4e1208 已推送 GitHub；官网源码提交 2183f5a 的同步工作流 38223564019 成功，公网 app.js 与 index.html 字节哈希均与本地一致，缓存版本20261012-payment。服务器四个新文件已逐一校验、备份并原子替换，备份位于 /home/wisteria/emjo/backups/payment-delivery-20261012。sudo -n 重启返回需要密码，最近进程 MainPID=4072151、公网/loopback catalog 无新 payment_workflow，故后端仍待用户重启后核验，不能在此状态开始首笔真实付款验收。
 
+用户执行重启并报告 active 后，本轮只读复核确认新版已加载：2026-10-12 16:43:26（北京时间）启动，MainPID=4097883、ActiveState=active；服务器支付核心文件哈希与发布版本一致。loopback 与公网 catalog 都返回 payment_workflow=durable_notifications_v1、Paddle live、debug_retain_assets=true。重启后的可读日志没有 Background operation failed。数据库仍只有一笔 PENDING，无 payment_notifications、mail 或人工 review；这些结果不等于实际付款/邮件验收通过。服务器 Python urllib 请求公网曾返回403，随后本地 curl 公网请求200并读取到新版字段；尚未用真实 Paddle 请求验证其外部投递。
+
 真实付款、Paddle 实际通知投递、实际邮箱收件仍未验收。原数据库只读检查：一笔 PENDING 订单，无支付确认事件与交付邮件；发件域名已验证。未新增付费生图或代付。
 
 ## 下一步真实验收
