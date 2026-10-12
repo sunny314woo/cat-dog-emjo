@@ -37,22 +37,24 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
     settings=settings or Settings();settings.validate()
     store=store or (DemoStore(settings.data_dir/'demo-state.json') if settings.mode=='demo' else MySQLStore())
     service=Service(settings,store,providers or Providers(settings))
-    async def worker():
+    async def worker(operation):
         while True:
             try:
-                await run_in_threadpool(service.maintenance)
-                await run_in_threadpool(service.work_once)
-                await run_in_threadpool(service.mail_once)
+                await run_in_threadpool(operation)
             except Exception:
                 # Never log private upload data, emails, provider credentials or OTPs.
                 import logging;logging.getLogger('emjo').error('Background operation failed; retained state for recovery')
             await asyncio.sleep(1)
     @asynccontextmanager
     async def lifespan(app):
-        task=asyncio.create_task(worker()) if start_worker else None
+        def payments():
+            service.maintenance()
+            service.payment_once()
+        tasks=[asyncio.create_task(worker(operation)) for operation in
+               (service.work_once,payments,service.mail_once)] if start_worker else []
         yield
-        if task:
-            task.cancel()
+        for task in tasks:task.cancel()
+        for task in tasks:
             try:await task
             except asyncio.CancelledError:pass
     app=FastAPI(title='EMJO isolated API',lifespan=lifespan,docs_url=None,redoc_url=None,openapi_url=None)
@@ -96,6 +98,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
         return session_response(request,{'styles':public_styles,'theme':CATALOG['theme'],'products':products,
             'me':service.me(sid),'calibration':{'enabled':settings.calibration_enabled,'limit':settings.calibration_limit,'days':settings.calibration_days},
             'workflow':'personalized_styles_v1',
+            'payment_workflow':'durable_notifications_v1',
             'debug_retain_assets':settings.debug_retain_assets,
             'paddle':{'environment':os.getenv('PADDLE_ENVIRONMENT','sandbox'),'clientToken':os.getenv('PADDLE_CLIENT_TOKEN','')}})
     @app.get(prefix+'/me')
@@ -154,7 +157,9 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
         with store.transaction() as tx:
             row=tx.get('orders',oid)
             if not user or not row or row['user_id']!=user['id']:raise RuleError('订单不存在',404)
-            return {'state':row['state'],'product':row['product']}
+            mail=tx.get('mail','delivery-'+row['job_id']) if row.get('job_id') else None
+            return {'state':row['state'],'product':row['product'],'generation_id':row.get('job_id'),
+                    'delivery_state':mail['state'] if mail else None,'delivery_attempts':mail['attempts'] if mail else 0}
     @app.post(prefix+'/generations/{jid}/feedback')
     def feedback(jid:str,body:FeedbackInput,request:Request):
         sid=identity(request)
@@ -188,16 +193,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
             raise RuleError('Invalid signature',401)
         try:event=json.loads(raw)
         except ValueError:raise RuleError('Invalid event')
-        kind=event.get('event_type');data=event.get('data',{});eid=event.get('event_id')
-        if not eid:raise RuleError('Invalid event')
-        if kind=='transaction.completed':
-            actual=await run_in_threadpool(service.providers.paddle,'GET','/transactions/'+data['id'])
-            await run_in_threadpool(service.complete_payment,eid,actual)
-        elif kind=='adjustment.updated' and data.get('action')=='refund' and data.get('status')=='approved':
-            # Whole-order refunds only. Partial refunds remain visible for operator review.
-            if data.get('type')=='full':await run_in_threadpool(service.refund,eid,data['transaction_id'])
-            else:
-                with store.transaction() as tx:tx.put('review',eid,{'id':eid,'transaction_id':data.get('transaction_id'),'reason':'partial_refund'})
+        await run_in_threadpool(service.enqueue_payment,event)
         return {'ok':True}
     # Explicit public allowlist. Never mount the repository or private data directory.
     @app.get('/')

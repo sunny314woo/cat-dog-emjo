@@ -327,6 +327,7 @@ class Service:
         with self.store.transaction() as tx:
             if product=='FIRST_PACK_UNLOCK':
                 job=self._owned(tx,sid,jid);self._ready(job)
+                if not (self.s.data_dir/'jobs'/jid/'stickers.zip').is_file():raise RuleError('作品文件暂时不可交付，请联系站点管理员',409)
                 if job['unlocked']:raise RuleError('这一套已经解锁',409)
                 if user['paid_once']:raise RuleError('首次优惠已使用',409)
                 # Keep the existing asset alive during checkout, without reviving expired files.
@@ -343,6 +344,58 @@ class Service:
         # Paddle.js creates the transaction. Only signed, API-verified completion grants delivery.
         return {'order_id':oid,'items':[{'priceId':price,'quantity':1}],
                 'customData':{'emjo_order_id':oid},'customer':{'email':user['email']}}
+    def enqueue_payment(self,event):
+        if not isinstance(event,dict):raise RuleError('Invalid event')
+        eid=event.get('event_id');kind=event.get('event_type');data=event.get('data',{})
+        if not isinstance(eid,str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,100}',eid) or not isinstance(data,dict):
+            raise RuleError('Invalid event')
+        if kind=='transaction.completed':transaction_id=data.get('id');refund_type=None
+        elif kind=='adjustment.updated' and data.get('action')=='refund' and data.get('status')=='approved':
+            transaction_id=data.get('transaction_id');refund_type=data.get('type')
+            if refund_type not in ('full','partial'):raise RuleError('Invalid refund')
+        else:return
+        if not isinstance(transaction_id,str) or not re.fullmatch(r'txn_[a-zA-Z0-9_]{1,80}',transaction_id):
+            raise RuleError('Invalid transaction')
+        now=self.clock()
+        # Store only identifiers needed for recovery, never customer/payment payloads.
+        with self.store.transaction() as tx:
+            if tx.get('payment_notifications',eid) or tx.get('events',eid):return
+            tx.put('payment_notifications',eid,{'id':eid,'kind':kind,'transaction_id':transaction_id,
+                'refund_type':refund_type,'state':'PENDING','attempts':0,'created':now,'next':now})
+    def payment_once(self):
+        now=self.clock();notification=None
+        with self.store.transaction() as tx:
+            candidates=sorted([n for n in tx.all('payment_notifications') if
+                (n['state'] in ('PENDING','FAILED') and n['next']<=now) or
+                (n['state']=='PROCESSING' and n.get('lease_until',0)<=now)],key=lambda n:n['created'])
+            if candidates:
+                notification=candidates[0]
+                notification.update(state='PROCESSING',attempts=notification['attempts']+1,lease_until=now+120)
+                tx.put('payment_notifications',notification['id'],notification)
+        if not notification:return False
+        state='DONE';reason=None
+        try:
+            if notification['kind']=='transaction.completed':
+                actual=self.providers.paddle('GET','/transactions/'+notification['transaction_id'])
+                if actual.get('id')!=notification['transaction_id']:raise RuleError('交易不匹配',409)
+                self.complete_payment(notification['id'],actual)
+            elif notification['refund_type']=='full':
+                self.refund(notification['id'],notification['transaction_id'])
+            else:
+                with self.store.transaction() as tx:
+                    tx.put('review',notification['id'],{'id':notification['id'],
+                        'transaction_id':notification['transaction_id'],'reason':'partial_refund'})
+        except RuleError:
+            state,reason='REVIEW','transaction_mismatch'
+        except Exception:
+            state,reason='FAILED','provider_unavailable'
+        with self.store.transaction() as tx:
+            notification.update(state=state,next=self.clock()+min(3600,30*2**min(notification['attempts']-1,7)))
+            if reason:notification['failure_code']=reason
+            if state=='REVIEW':tx.put('review',notification['id'],{'id':notification['id'],
+                'transaction_id':notification['transaction_id'],'reason':reason})
+            tx.put('payment_notifications',notification['id'],notification)
+        return True
     def complete_payment(self,event_id,data):
         """Call only with a signed webhook and freshly fetched Paddle transaction."""
         oid=(data.get('custom_data') or {}).get('emjo_order_id')
@@ -364,9 +417,11 @@ class Service:
             if total<=0 or not re.fullmatch('[A-Z]{3}',data.get('currency_code','')):raise RuleError('交易金额无效',409)
             order.update(transaction_id=data['id'],state='PAID',amount=total,currency=data['currency_code'],paid_at=self.clock())
             user=tx.get('users',order['user_id'])
+            if tx.get('payment_refunds',data['id']):
+                order['state']='REFUNDED';tx.put('orders',oid,order);tx.put('events',event_id,{'id':event_id});return
             if order['product']=='FIRST_PACK_UNLOCK':
                 job=tx.get('jobs',order['job_id'])
-                if not job or job['state']!='READY' or self._expired(job) or job['unlocked'] or user['paid_once']:
+                if not job or job['state']!='READY' or self._expired(job) or job['unlocked'] or user['paid_once'] or not (self.s.data_dir/'jobs'/job['id']/'stickers.zip').is_file():
                     order['state']='REFUND_REQUIRED'
                 else:
                     job.update(unlocked=True,user_id=user['id'],expires=self.clock()+self.s.paid_ttl_hours*3600)
@@ -380,6 +435,7 @@ class Service:
     def refund(self,event_id,transaction_id):
         with self.store.transaction() as tx:
             if tx.get('events',event_id):return
+            tx.put('payment_refunds',transaction_id,{'id':transaction_id,'event_id':event_id})
             for order in tx.all('orders'):
                 if order['transaction_id']!=transaction_id:continue
                 order['state']='REFUNDED';tx.put('orders',order['id'],order)
@@ -513,18 +569,21 @@ class Service:
         with self.store.transaction() as tx:
             candidates=[m for m in tx.all('mail') if m['state'] in ('PENDING','FAILED') and m['attempts']<4 and m['next']<=now]
             if candidates:
-                mail=candidates[0];mail.update(state='SENDING',attempts=mail['attempts']+1,lease_until=now+120);tx.put('mail',mail['id'],mail)
-                job=tx.get('jobs',mail['job_id']);user=tx.get('users',job['user_id'])
+                mail=candidates[0]
+                job=tx.get('jobs',mail['job_id']);user=tx.get('users',job['user_id']) if job else None
+                if job and 'link_expires' not in mail:
+                    mail['link_expires']=now+86400 if self.s.debug_retain_assets else job['expires']
+                mail.update(state='SENDING',attempts=mail['attempts']+1,lease_until=now+120);tx.put('mail',mail['id'],mail)
         if not mail:return
         try:
-            if not job['unlocked'] or self._expired(job):raise RuleError('交付已失效')
+            if not job or not user or not job['unlocked'] or self._expired(job):raise RuleError('交付已失效')
             path=self.s.data_dir/'jobs'/job['id']/'stickers.zip'
-            token=self.file_token(job['id'],'stickers.zip',now+86400 if self.s.debug_retain_assets else job['expires'])
+            token=self.file_token(job['id'],'stickers.zip',mail['link_expires'])
             link=(self.s.asset_url or self.s.public_url).rstrip('/')+'/api/files/'+job['id']+'/stickers.zip?token='+token
             content=path.read_bytes();attachment=content if len(content)<=10*1024*1024 else None
-            self.providers.email(user['email'],'你的九种小心情，准备好啦',
+            provider_id=self.providers.email(user['email'],'你的九种小心情，准备好啦',
                 f'<p>你的九张贴纸已经准备好。请保存附件或在有效期内下载。</p><p><a href="{link}">下载完整贴纸包</a></p><p>链接仅在本次24小时交付窗口内有效。</p>',mail['id'],attachment)
-            state='SENT'
+            mail['provider_id']=provider_id;state='SENT'
         except Exception:state='FAILED'
         with self.store.transaction() as tx:
             mail.update(state=state,next=self.clock()+300*mail['attempts']);tx.put('mail',mail['id'],mail)

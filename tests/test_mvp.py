@@ -142,6 +142,131 @@ def test_first_unlock_reuses_result_without_extra_pack(setup,monkeypatch):
     assert client.get(f'/sticker/api/files/{jid}/stickers.zip').status_code==403
 
 
+def test_signed_webhook_acknowledges_without_waiting_for_paddle(setup,monkeypatch):
+    import hashlib,hmac,json,time
+    client,service,_=setup
+    service.s.mode='live';monkeypatch.setenv('PADDLE_WEBHOOK_SECRET','notification-secret')
+    calls=[]
+    service.providers.paddle=lambda *args:calls.append(args)
+    event={'event_id':'evt_completed','event_type':'transaction.completed','data':{'id':'txn_checkout'}}
+    raw=json.dumps(event).encode();stamp=str(int(time.time()))
+    signature=hmac.new(b'notification-secret',stamp.encode()+b':'+raw,hashlib.sha256).hexdigest()
+    url='/sticker/api/webhooks/paddle'
+    assert client.post(url,content=raw).status_code==401
+    with service.store.transaction() as tx:assert not tx.all('payment_notifications')
+    for _ in range(2):
+        assert client.post(url,content=raw,headers={'Paddle-Signature':f'ts={stamp};h1={signature}'}).status_code==200
+    assert not calls
+    with service.store.transaction() as tx:
+        rows=tx.all('payment_notifications');assert len(rows)==1 and rows[0]['state']=='PENDING'
+        assert 'data' not in rows[0]
+
+
+def test_payment_and_mail_workers_continue_during_generation(tmp_path):
+    import threading
+    app=create_app(Settings(data_dir=tmp_path),DemoStore(),start_worker=True)
+    service=app.state.service
+    generating=threading.Event();release=threading.Event();payments=threading.Event();mail=threading.Event()
+    def slow_generation():
+        generating.set();release.wait(5)
+    service.work_once=slow_generation
+    service.maintenance=lambda:None
+    service.payment_once=payments.set
+    service.mail_once=mail.set
+    with TestClient(app):
+        try:
+            assert generating.wait(1)
+            assert payments.wait(1) and mail.wait(1)
+        finally:release.set()
+
+
+def test_payment_notification_recovers_after_restart_and_provider_failure(setup,monkeypatch):
+    from server.service import Service
+    from server.providers import ProviderError
+    _,service,_=setup
+    monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
+    sid,user=signed_in(service,'recover@example.com')
+    actual=payment_order(service,user['id'],'recover')
+    clock=[service.clock()];service.clock=lambda:clock[0]
+    event={'event_id':'evt_recover','event_type':'transaction.completed','data':{'id':actual['id']}}
+    service.enqueue_payment(event)
+    service.providers.paddle=lambda *args:(_ for _ in ()).throw(ProviderError('unavailable'))
+    assert service.payment_once()
+    assert service.me(sid)['pack_balance']==0
+    with service.store.transaction() as tx:
+        row=tx.get('payment_notifications',event['event_id']);assert row['state']=='FAILED'
+        clock[0]=row['next']
+    recovered=Service(service.s,DemoStore(service.store.path),service.providers,clock=lambda:clock[0])
+    recovered.providers.paddle=lambda *args:actual
+    assert recovered.payment_once()
+    assert recovered.me(sid)['pack_balance']==3
+    recovered.enqueue_payment(event)
+    assert not recovered.payment_once()
+    recovered.enqueue_payment(dict(event,event_id='evt_second_delivery'))
+    recovered.payment_once();assert recovered.me(sid)['pack_balance']==3
+
+
+def test_interrupted_payment_notification_and_refund_before_completion(setup,monkeypatch):
+    _,service,_=setup
+    monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
+    sid,user=signed_in(service,'early-refund@example.com')
+    actual=payment_order(service,user['id'],'early')
+    service.enqueue_payment({'event_id':'evt_refund','event_type':'adjustment.updated',
+        'data':{'action':'refund','status':'approved','type':'full','transaction_id':actual['id']}})
+    assert service.payment_once()
+    service.enqueue_payment({'event_id':'evt_complete','event_type':'transaction.completed','data':{'id':actual['id']}})
+    with service.store.transaction() as tx:
+        row=tx.get('payment_notifications','evt_complete');row.update(state='PROCESSING',lease_until=service.clock()-1)
+        tx.put('payment_notifications',row['id'],row)
+    service.providers.paddle=lambda *args:actual
+    assert service.payment_once()
+    assert service.me(sid)['pack_balance']==0
+    with service.store.transaction() as tx:assert tx.get('orders','early')['state']=='REFUNDED'
+
+
+def test_wrong_product_notification_is_held_for_review(setup,monkeypatch):
+    _,service,_=setup
+    monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
+    sid,user=signed_in(service,'mismatch@example.com')
+    actual=payment_order(service,user['id'],'mismatch');actual['items'][0]['price']['id']='pri_wrong'
+    service.enqueue_payment({'event_id':'evt_wrong','event_type':'transaction.completed','data':{'id':actual['id']}})
+    service.providers.paddle=lambda *args:actual
+    service.payment_once();assert service.me(sid)['pack_balance']==0
+    with service.store.transaction() as tx:
+        assert tx.get('orders','mismatch')['state']=='PENDING'
+        assert tx.get('payment_notifications','evt_wrong')['state']=='REVIEW'
+        assert tx.get('review','evt_wrong')
+
+
+def test_unlock_mail_retries_identical_payload_and_records_provider_id(setup,monkeypatch):
+    from server.providers import ProviderError
+    client,service,catalog=setup
+    monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
+    jid=create(client,catalog).json()['id'];service.work_once()
+    client.post('/sticker/api/auth/code',json={'email':'delivery@example.com'})
+    client.post('/sticker/api/auth/verify',json={'email':'delivery@example.com','code':'123456'})
+    sid=service.digest(client.cookies.get('emjo_session'));user=service.current(sid)[1]
+    service.complete_payment('evt_delivery',payment_order(service,user['id'],'delivery','FIRST_PACK_UNLOCK',jid))
+    service.s.debug_retain_assets=True;clock=[service.clock()];service.clock=lambda:clock[0];calls=[]
+    def send(*args):
+        calls.append(args)
+        if len(calls)==1:raise ProviderError('temporary mail failure')
+        return 'resend-delivery-id'
+    service.providers.email=send
+    service.mail_once()
+    first=client.get('/sticker/api/orders/delivery').json()
+    assert first['state']=='PAID' and first['delivery_state']=='FAILED'
+    with service.store.transaction() as tx:clock[0]=tx.get('mail','delivery-'+jid)['next']
+    service.mail_once();service.mail_once()
+    assert len(calls)==2 and calls[0]==calls[1]
+    assert calls[1][0]=='delivery@example.com'
+    assert calls[1][-1]==(service.s.data_dir/'jobs'/jid/'stickers.zip').read_bytes()
+    with service.store.transaction() as tx:
+        mail=tx.get('mail','delivery-'+jid);assert mail['state']=='SENT' and mail['provider_id']=='resend-delivery-id'
+    assert client.get('/sticker/api/orders/delivery').json()['delivery_state']=='SENT'
+    with TestClient(client.app) as stranger:assert stranger.get('/sticker/api/orders/delivery').status_code==404
+
+
 def test_refunded_paid_pack_cannot_claim_free_stickers(setup,monkeypatch):
     _,service,catalog=setup
     from server.service import RuleError
