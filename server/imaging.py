@@ -156,6 +156,9 @@ def build_delivery_archive(folder):
                 archive.write(webp,f'WebP-512/{name}.webp')
             archive.write(folder/'grid.png','grid.png')
             archive.writestr('README.txt',
+                '微信使用：请优先打开 GIF-240/，使用其中九张 .gif 原文件。\n'
+                'PNG 是透明母版，但作为普通图片拖入微信时可能显示白底；文件透明不等于各聊天应用都保留透明效果。\n'
+                'GIF 是静态透明贴纸，不是动画；PNG 母版继续保留较平滑的半透明边缘。\n\n'
                 '同一套九张贴纸，多尺寸、多格式透明文件：\n'
                 '根目录 sticker-1.png 至 sticker-9.png：512×512 RGBA PNG 正式母版，保留半透明边缘。\n'
                 'PNG-256/：九张 256×256 透明 PNG。\n'
