@@ -108,6 +108,8 @@ PET_STICKER_PROMPTS.md 保留为模块库，v0.1 附录不注入。实施前组�
 
 Paddle 为唯一支付平台。金额、国家覆盖、税模式和 ID 配置化，缺少配置的商品不可真实收款；本地 mock 必须明确标注。
 
+2026-10-18 决定：支付采用 **Overlay + One page**。Paddle.js 统一设置 `displayMode: 'overlay'`、`variant: 'one-page'`，在当前页面的结账浮层内收集客户资料与付款信息；首次解锁、Pack 购买、继续待付款订单及支付链接恢复均使用此模式。邮箱验证码账户验证仍在结账前完成，权益继续以服务端核验支付结果为准。[Paddle 单页浮层结账设置](https://developer.paddle.com/paddle-js/methods/paddle-checkout-open/)。
+
 | 商品键 | 原稿 USD 草案，待核验 | 中国区金额 | Price ID | 权益 |
 | --- | --- | --- | --- | --- |
 | FIRST_PACK_UNLOCK | US$6.99 | 待填写 | 占位／留空 | 解锁当前首次结果，不发新 Pack |
