@@ -81,3 +81,10 @@ CUA尝试切换到文件传输助手时坐标点击返回AXError.notImplemented�
 安全的匿名实际请求检查：/style-previews使用不可解码的占位字节（即使登录门禁回退也不能触发生图）返回401；对不存在任务的/style继续生成接口也返回401。没有调用模型、占用制作次数或发邮件。可读重启日志有Application startup complete，无Background operation failed或Traceback。
 
 原订单仍PAID，原作品READY且unlocked=true，交付邮件SENT、attempts=1、provider_id保留，没有重复交付。本次只证明新常驻规则已加载，不能把它当作PNG透明白底或新九格表现力验收通过。未付款素材暂不删除，未开启30天清理。
+
+
+## 用户补充PNG的来源已澄清
+
+用户上传一张512×512 RGBA PNG；SHA-256 a54aecfdca43388dd94cdf0c892d94865cd14caf6aba5b237f201265ecac53ea，与A-original-rgba.png逐字节相同。alpha范围0–255，121791像素完全透明（46.46%），8182像素半透明，四角alpha均0。私有副本.local-data/payment-recovery-20261018/received-png-check/received.png。
+
+询问来源后用户明确回答“直接从原 ZIP 取出”。因此这张不能作为微信白底消息另存为后的文件证据，不能据此断言微信发送后原文件未变或白底仅来自显示底板。PNG在Mac微信预览/消息白底已实测；微信保存/接收文件的格式与alpha仍未核验，问题保持未解决。下一步所需的是从已发送的白底图片消息保存出的文件，保持微信默认格式原样提供。
