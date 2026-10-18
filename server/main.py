@@ -15,7 +15,7 @@ from .settings import ROOT, Settings
 from .store import DemoStore, MySQLStore
 from .providers import Providers, ProviderError, verify_signature
 from .service import Service, RuleError
-from .catalog import CATALOG, PRODUCTS
+from .catalog import CATALOG, PRODUCTS, PACK_PROMPT_VERSION
 
 class EmailInput(BaseModel): email: str = Field(max_length=254)
 class VerifyInput(EmailInput):
@@ -102,6 +102,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
             'payment_workflow':'durable_notifications_v1',
             'delivery_workflow':'discounted_multiformat_v2',
             'generation_requires_email':settings.mode=='live',
+            'pack_prompt_version':PACK_PROMPT_VERSION,
             'debug_retain_assets':settings.debug_retain_assets,
             'paddle':{'environment':os.getenv('PADDLE_ENVIRONMENT','sandbox'),'clientToken':os.getenv('PADDLE_CLIENT_TOKEN','')}})
     @app.get(prefix+'/me')

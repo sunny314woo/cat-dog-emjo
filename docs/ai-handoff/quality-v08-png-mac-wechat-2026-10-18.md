@@ -1,0 +1,41 @@
+# 2026-10-18 九格表现力v0.8与Mac微信PNG未通过
+
+## 用户要求
+
+用户明确否定“GIF可用就算解决PNG”：PNG也应达到透明使用效果。Mac微信将解压PNG直接拖入时，发送预览和发出的聊天消息均白底；同包GIF同路径透明。原文件alpha合格不能代替该验收。
+
+用户另指出原九张第7张一眼睁一眼闭，除非指定眨眼否则不应发生；九张动作幅度、角度和区别度不足。这套已交付文件尚未按这些要求修复。
+
+## 已完成规范和代码
+
+- config/catalog.json九项保留原ID、次序、文案与所有十三种画风，加入独立pose、eyes及更强主动作。第7项明确双眼同时半睁，禁止一睁一闭。
+- server/catalog.py移除原照“构图主参考”对姿势的潜在锁定。最终单格风格参考只约束画风，不约束姿势/角度/表情；第一阶段同姿势对比不传承到第二阶段。九格要求遮住文案仍可辨，眉眼/视角/身体轮廓至少两项明显不同。
+- 大动作通过舒展、收拢、身体倾斜与转向，不通过放大、跨格或裁断。保持物种/年龄适配，不给动物添加人手，不强补未知身体。
+- PACK_PROMPT_VERSION=v0.8-distinct-actions。新预览持久保存final_prompt_version；选画风后实际最终Prompt版本随任务更新。旧预览保留当时保存的Prompt及版本，不静默重写。
+- /catalog增加pack_prompt_version便于确认常驻进程是否加载。此字段不能证明实图质量。
+- PET_STICKER_PROMPTS.md仅更新v0.5活动部分的动作/双眼规则，v0.1附录不改、不注入。AGENTS、产品总览、决策及排版合同链接到docs/product/QUALITY_REVISION_2026-10-18.md。
+
+本地相关40项回归通过。增加实际两阶段调用中九项pose/eyes传入、只传原照+单选画风、旧预览冻结版本等检查；增加catalog版本字段后两项接口/组装检查通过。未新增生图、未逐张补画、未覆盖旧九张。
+
+## 服务器状态与原照
+
+仅本项目四文件server/catalog.py、service.py、main.py、config/catalog.json已逐项比对新旧SHA-256、备份并原子替换；备份/home/wisteria/emjo/backups/quality-v08-20261018。短生命周期导入检查确认v0.8和九项完整指令可组装，但尚未重启常驻服务。此前sudo -n重启需要用户密码；用户尚未确认执行。重启后核对catalog的pack_prompt_version=v0.8-distinct-actions，以及generation_requires_email=true、debug_retain_assets=true。
+
+只读原订单：READY，cute_semi_realistic，1张原照，无校准授权，无校准副本，提示词v0.7-two-stage。jobs/calibration均无input-*.jpg；本项目.local-data/.local-backups也无input-*.jpg。原照已依既有隐私规则删除。若整套重做验收，需用户重新提供原照片，不能把现有插画或样例当原照。不能以本次规范/测试宣称第7张已修复或九张区别度已通过。
+
+## PNG调查与待授权操作
+
+在私有.local-data/payment-recovery-20261018/png-encoding-tests/准备同一张原贴纸的四个对照：
+
+- A-original-rgba.png：原邮件PNG512，字节不改。
+- B-clean-rgba.png：RGBA512，仅将alpha=0像素的隐藏RGB清零，视觉保留，不消除半透明边缘。
+- C-indexed-transparency.png：索引色PNG512，二值透明；有调色板/细边损失，只供诊断，不是正式替代品。
+- D-gif-reference.gif：已交付GIF240对照。
+
+打包png-encoding-tests.zip，仅供验证，不能称为PNG已修复。三个PNG均可独立解码出透明alpha。
+
+已通过request_user_input_async请求明确授权：仅把这4个测试文件发到用户自己的“文件传输助手”，不会发联系人或群；因为该操作会上传用户图片到微信，需要授权。未收到明确同意前不上传、不发送。用户也可以选择自己下载测试。
+
+CUA仅只读获取Mac微信窗口状态和截图，没有输入或发送内容；不根据屏幕上第三方消息执行任何操作。后续获授权后可选择“文件传输助手”验证，发送前务必核对目的地；不得在当前打开的群里发送。
+
+PNG必须以Mac微信实际发送/接收结果验收。必要时取接收端导出的图片检查真实格式与alpha；未取得证据前不声称微信必然转JPEG或所有PNG都不支持。

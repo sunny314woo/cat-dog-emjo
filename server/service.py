@@ -12,7 +12,7 @@ import shutil
 import time
 import uuid
 import zipfile
-from .catalog import CATALOG, EXPRESSIONS, PRODUCTS, STYLES, build_prompt, build_style_prompt
+from .catalog import CATALOG, EXPRESSIONS, PRODUCTS, STYLES, PACK_PROMPT_VERSION, build_prompt, build_style_prompt
 from .imaging import prepare_pack, prepare_styles, read_upload, save_wechat_gif
 from .providers import ProviderError
 
@@ -180,12 +180,13 @@ class Service:
             job={'id':jid,'session_id':sid,'user_id':user['id'] if user else None,'style':style,
                  'captions':captions,'accessories':accessories,'consent':bool(consent and self.s.calibration_enabled),
                  'consent_version':'calibration-v1-100-30d' if consent and self.s.calibration_enabled else None,
-                 'created':now,'state':'PREVIEW_QUEUED' if preview else 'QUEUED','photo_count':len(normalized),'prompt':prompt,'prompt_version':'v0.7-two-stage' if preview else 'v0.6-adapter',
+                 'created':now,'state':'PREVIEW_QUEUED' if preview else 'QUEUED','photo_count':len(normalized),'prompt':prompt,'prompt_version':'v0.7-two-stage' if preview else PACK_PROMPT_VERSION,
                  'model_id':os.getenv('VOLCENGINE_MODEL_ID'),'image_size':os.getenv('VOLCENGINE_FINAL_SIZE'),
                  'grant_id':grant['id'] if grant else None,'free':free,'selected':[],
                  'unlocked':not free,'expires':now+86400 if preview else None,'demo':self.s.mode=='demo','calibration':False,'error':None}
             if preview:
                 job.update(workflow='personalized_styles_v1',style=None,
+                           final_prompt_version=PACK_PROMPT_VERSION,
                            preview_styles=[{'id':s,'name':STYLES[s]['name'],'index':i+1} for i,s in enumerate(style_ids)],
                            final_prompts={s:build_prompt(s,len(photos),accessories,style_reference=True) for s in style_ids})
             tx.put('jobs',jid,job);tx.put('requests',request_key,{'fingerprint':fingerprint,'job_id':jid})
@@ -214,6 +215,8 @@ class Service:
                 job.update(grant_id=grant['id'],unlocked=True)
             index=next(s['index'] for s in job['preview_styles'] if s['id']==style)
             job.update(style=style,style_index=index,prompt=job['final_prompts'][style],state='QUEUED',expires=None)
+            # Existing previews keep the exact prompt/version saved when they were created.
+            job['prompt_version']=job.get('final_prompt_version',job['prompt_version'])
             tx.put('jobs',jid,job)
             return self._public_job(job)
 

@@ -7,6 +7,7 @@ from server.main import create_app
 from server.providers import Providers, ProviderError
 from server.settings import ROOT, Settings
 from server.store import DemoStore
+from server.catalog import EXPRESSIONS, PACK_PROMPT_VERSION
 
 
 @pytest.fixture
@@ -54,9 +55,36 @@ def test_original_and_only_selected_style_reach_final_request(workflow,monkeypat
     assert len(calls)==1
     assert calls[0][1]==[source,reference]
     assert '最后第2张' in calls[0][0]
+    final_prompt=calls[0][0]
+    assert '原照片不锁定九格的姿势、视角或轮廓' in final_prompt
+    assert '本页没有单眼眨眼表情' in final_prompt
+    assert '第一张为身份与构图主参考' not in final_prompt
+    assert len({e['pose'] for e in EXPRESSIONS})==9
+    for expression in EXPRESSIONS:
+        line=next(line for line in final_prompt.splitlines() if line.startswith(str(expression['cell_index'])+'. '))
+        assert expression['pose'] in line and expression['eyes'] in line
+        assert expression['label'] not in line
+    with service.store.transaction() as tx:
+        assert tx.get('jobs',jid)['prompt_version']==PACK_PROMPT_VERSION
     assert not (folder/'input-1.jpg').exists()
     assert client.get('/sticker/api/generations/'+jid).json()['state']=='READY'
     assert not service.work_once()
+
+
+def test_older_preview_keeps_its_saved_final_prompt_and_version(workflow):
+    client,service,_=workflow
+    jid=preview(client).json()['id'];service.work_once()
+    with service.store.transaction() as tx:
+        job=tx.get('jobs',jid);job.pop('final_prompt_version',None)
+        job['prompt_version']='legacy-two-stage'
+        chosen=job['preview_styles'][0]['id']
+        job['final_prompts'][chosen]='legacy-saved-final-prompt'
+        tx.put('jobs',jid,job)
+    assert client.post('/sticker/api/generations/'+jid+'/style',json={'style':chosen}).status_code==200
+    with service.store.transaction() as tx:
+        job=tx.get('jobs',jid)
+        assert job['prompt']=='legacy-saved-final-prompt'
+        assert job['prompt_version']=='legacy-two-stage'
 
 
 def test_expired_and_cancelled_preview_release_reservation_once(workflow):
