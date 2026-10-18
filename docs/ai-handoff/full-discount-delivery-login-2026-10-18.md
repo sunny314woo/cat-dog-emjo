@@ -12,7 +12,7 @@
 - 新ZIP 8,339,587字节，SHA-256 `a86cf233e4892ff7de2412fb55591848bea3f56b97d4d2b15bbb0f3af1b38248`。
 - ZIP内47项：同一套九张的五组版本（45个贴纸文件）+grid.png+README.txt。PNG512根目录，PNG256/PNG240/GIF240/WebP512分目录。
 - 下载后逐项验证45个贴纸文件尺寸、alpha含0且有有效前景、外围完全透明；512PNG与原交付包逐张字节一致。未宣称轮廓语义无瑕疵或手机聊天导入已验收。
-- 正式交付邮件SENT，首次成功，provider_id已持久化；Resend只读返回last_event=delivered（收件服务器接受），附件列表确认为my-stickers.zip、8,339,587字节。实际收件箱/垃圾邮件和用户打开附件仍需用户确认。
+- 正式交付邮件SENT，首次成功，provider_id已持久化；Resend只读返回last_event=delivered（收件服务器接受），附件列表确认为my-stickers.zip、8,339,587字节。用户随后已确认收到邮件；但反馈实际测试PNG出现白底、GIF透明，实际使用的设备和应用/导入路径尚待确认，透明交付的用户端验收仍未通过。
 - 私有证据在本项目被忽略的.local-data/payment-recovery-20261018；服务器备份/home/wisteria/emjo/backups/delivery-login-20261018。不公开这些素材、记录或签名下载链接。
 
 ## 已实现
@@ -46,3 +46,14 @@ sudo systemctl is-active emjo.service
 截至2026-10-18 13:23（北京时间）只读核对：MainPID仍4102531，启动于10月12日21:06；公网catalog没有delivery_workflow/generation_requires_email，debug_retain_assets=true。因此**不能声称常驻后端已启用新的全额优惠和登录规则**。订单解锁与正式邮件交付已经成功，不依赖这次重启。
 
 收到用户执行结果后检查公网和loopback catalog：delivery_workflow=discounted_multiformat_v2、generation_requires_email=true、debug_retain_assets=true；核对MainPID/启动时间和该订单PAID/unlocked/mail SENT。不得为验收新增生图、代付或重复发送已成功邮件。不要修改其他服务。
+
+
+## 用户收件后的 PNG 白底反馈（2026-10-18）
+
+用户确认已收邮件，但反馈 PNG 看起来有白底、GIF 透明。尚未说明设备、应用、是否经相册保存/微信普通图片发送/自定义表情导入，不能直接归因为用户操作或预览底色。
+
+本次进一步直接读取 Resend 保存的已发送 ZIP 附件（不是仅检查服务器当前文件）：SHA-256 与交付包一致。附件内首张 PNG512 为 RGBA、46.46% 像素 alpha=0；PNG240 为45.11%；GIF240 为48.35%。九张 PNG240 与 GIF240 对比，GIF 完全透明区域恰好多出 PNG alpha 1–127 的半透明像素；PNG 外部 alpha=0 的位置没有在 GIF 中变成不透明。九张原 PNG 合成绿/深色底均能透出底色，无整幅白色矩形底；仍有应与透明通道分开评估的轮廓白边/局部碎片。
+
+诊断图和指标位于私有 .local-data/payment-recovery-20261018/png-gif-diagnosis/。不修改原图、不把所有白色像素变透明（会误删白衣和文字描边），不重复发送同一邮件，不据文件 alpha 检查宣称手机聊天导入已通过。
+
+已向用户询问设备和实际查看/发送路径，收到回答后沿该路径继续排查。后台 catalog 仍无新版字段，用户的收件反馈不是重启完成确认，重启待办保留。
