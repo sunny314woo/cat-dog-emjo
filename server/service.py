@@ -128,6 +128,8 @@ class Service:
             data['cells']=EXPRESSIONS
             return data
     def create_job(self,sid,request_id,photos,style,captions=True,accessories=True,consent=False,preview=False):
+        if self.s.mode=='live' and not self.current(sid)[1]:
+            raise RuleError('请先验证邮箱，再开始制作；每个邮箱账户限一次免费体验',401)
         if not re.fullmatch(r'[a-zA-Z0-9-]{16,64}',request_id): raise RuleError('生成请求标识无效')
         if not 1<=len(photos)<=3: raise RuleError('请上传 1–3 张同一主体的照片')
         if any(len(p)>self.s.upload_bytes for p in photos): raise RuleError('每张照片请小于 15MB',413)
@@ -145,12 +147,13 @@ class Service:
                 if existing['fingerprint']!=fingerprint: raise RuleError('该请求已用于另一份作品',409)
                 return self._public_job(self._owned(tx,sid,existing['job_id']))
             session=tx.get('sessions',sid); user=tx.get('users',session['user_id']) if session['user_id'] else None
+            if self.s.mode=='live' and not user:raise RuleError('请先验证邮箱，再开始制作',401)
             if any((j['session_id']==sid or user and j.get('user_id')==user['id']) and j['state'] in ('QUEUED','GENERATING','PROCESSING','PREVIEW_QUEUED','PREVIEW_GENERATING','STYLE_READY') for j in tx.all('jobs')):
                 raise RuleError('上一份正在制作，先等待它完成吧',409)
             free=not(session['trial_used'] or user and(user['trial_used'] or user['paid_once']))
             grant=None
             day=datetime.fromtimestamp(now,ZoneInfo('Asia/Shanghai')).date().isoformat()
-            attempt_key=sid+day
+            attempt_key=(user['id'] if user else sid)+day
             attempt=tx.get('attempts',attempt_key) or {'count':0}
             if free and attempt['count']>=3:raise RuleError('今天已尝试三次，请明天再来',429)
             if free:
@@ -190,6 +193,9 @@ class Service:
 
     def choose_style(self,sid,jid,style):
         with self.store.transaction() as tx:
+            session=tx.get('sessions',sid)
+            if self.s.mode=='live' and not (session and session.get('user_id')):
+                raise RuleError('请先验证邮箱，再继续制作',401)
             job=self._owned(tx,sid,jid)
             if job.get('workflow')!='personalized_styles_v1':raise RuleError('该作品没有个性化风格预览',409)
             if job.get('style'):
@@ -376,6 +382,8 @@ class Service:
                     order={'id':oid,'user_id':user['id'],'job_id':jid,'product':product,'price_id':price,
                            'state':'PENDING','transaction_id':None,'created':now,'checkout_mode':'paddlejs'}
                     tx.put('orders',oid,order)
+            if self.order_payment_state(tx,tx.get('orders',oid)):
+                raise RuleError('这笔订单正在核验付款，请勿重复付款；请刷新订单状态',409)
         # Paddle.js creates the transaction. Only signed, API-verified completion grants delivery.
         return {'order_id':oid,'items':[{'priceId':price,'quantity':1}],
                 'customData':{'emjo_order_id':oid},'customer':{'email':user['email']}}
@@ -396,10 +404,17 @@ class Service:
                     'unlocked':bool(job.get('unlocked')),'free':bool(job.get('free')),
                     'demo':bool(job.get('demo')),'delivery_state':mail.get('state') if mail else None})
             history_orders=[{'id':o['id'],'product':o['product'],'state':o['state'],
+                'payment_state':self.order_payment_state(tx,o),
                 'generation_id':o.get('job_id'),'created':o['created'],
                 'delivery_state':(tx.get('mail','delivery-'+o['job_id']) or {}).get('state') if o.get('job_id') else None}
                 for o in orders[:30]]
         return {'jobs':history_jobs,'orders':history_orders}
+    def order_payment_state(self,tx,order):
+        if order['state']!='PENDING':return None
+        notifications=[n for n in tx.all('payment_notifications') if n.get('order_id')==order['id']]
+        if any(n['state']=='REVIEW' for n in notifications):return 'REVIEW'
+        if any(n['state'] in ('PENDING','PROCESSING','FAILED') for n in notifications):return 'CONFIRMING'
+        return None
     def enqueue_payment(self,event):
         if not isinstance(event,dict):raise RuleError('Invalid event')
         eid=event.get('event_id');kind=event.get('event_type');data=event.get('data',{})
@@ -434,6 +449,7 @@ class Service:
             if notification['kind']=='transaction.completed':
                 actual=self.providers.paddle('GET','/transactions/'+notification['transaction_id'])
                 if actual.get('id')!=notification['transaction_id']:raise RuleError('交易不匹配',409)
+                notification['order_id']=(actual.get('custom_data') or {}).get('emjo_order_id')
                 self.complete_payment(notification['id'],actual)
             elif notification['refund_type']=='full':
                 self.refund(notification['id'],notification['transaction_id'])
@@ -441,8 +457,8 @@ class Service:
                 with self.store.transaction() as tx:
                     tx.put('review',notification['id'],{'id':notification['id'],
                         'transaction_id':notification['transaction_id'],'reason':'partial_refund'})
-        except RuleError:
-            state,reason='REVIEW','transaction_mismatch'
+        except RuleError as exc:
+            state,reason='REVIEW','invalid_amount' if str(exc)=='交易金额无效' else 'transaction_mismatch'
         except Exception:
             state,reason='FAILED','provider_unavailable'
         with self.store.transaction() as tx:
@@ -469,8 +485,21 @@ class Service:
             if price.get('id')!=order['price_id'] or price.get('product_id')!=os.getenv('PADDLE_PRODUCT_ID'):
                 raise RuleError('支付商品不匹配',409)
             if order['transaction_id'] and order['transaction_id']!=data['id']: raise RuleError('支付交易不匹配',409)
-            total=int(data['details']['totals']['total'])
-            if total<=0 or not re.fullmatch('[A-Z]{3}',data.get('currency_code','')):raise RuleError('交易金额无效',409)
+            totals=data.get('details',{}).get('totals',{})
+            if not re.fullmatch(r'[0-9]+',str(totals.get('total',''))) or not re.fullmatch('[A-Z]{3}',data.get('currency_code','')):
+                raise RuleError('交易金额无效',409)
+            total=int(totals['total'])
+            if total==0:
+                # Paddle legitimately completes fully discounted orders without a charge.
+                # Accept only a verified full discount, never an unexplained zero total.
+                fields=('subtotal','tax','discount','grand_total','balance')
+                if not all(re.fullmatch(r'[0-9]+',str(totals.get(k,''))) for k in fields):
+                    raise RuleError('交易金额无效',409)
+                if not (data.get('discount_id') and int(totals['subtotal'])>0 and
+                        int(totals['discount'])==int(totals['subtotal'])+int(totals['tax']) and
+                        int(totals['grand_total'])==0 and int(totals['balance'])==0 and
+                        totals.get('currency_code')==data['currency_code']):
+                    raise RuleError('交易金额无效',409)
             order.update(transaction_id=data['id'],state='PAID',amount=total,currency=data['currency_code'],paid_at=self.clock())
             user=tx.get('users',order['user_id'])
             if tx.get('payment_refunds',data['id']):
@@ -638,7 +667,7 @@ class Service:
             link=(self.s.asset_url or self.s.public_url).rstrip('/')+'/api/files/'+job['id']+'/stickers.zip?token='+token
             content=path.read_bytes();attachment=content if len(content)<=10*1024*1024 else None
             provider_id=self.providers.email(user['email'],'你的九种小心情，准备好啦',
-                f'<p>你的九张贴纸已经准备好。请保存附件或在有效期内下载。</p><p><a href="{link}">下载完整贴纸包</a></p><p>链接仅在本次24小时交付窗口内有效。</p>',mail['id'],attachment)
+                f'<p>你的九张贴纸已经准备好。请解压附件，保存透明原文件。</p><p>内含同一套九张：PNG 512／256／240、静态透明 GIF 240、WebP 512，以及整套拼图。</p><p><a href="{link}">下载完整贴纸包</a></p><p>链接仅在本次24小时交付窗口内有效，请及时保存。</p>',mail['id'],attachment)
             mail['provider_id']=provider_id;state='SENT'
         except Exception:state='FAILED'
         with self.store.transaction() as tx:

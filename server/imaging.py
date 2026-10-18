@@ -125,11 +125,48 @@ def prepare_pack(source: bytes, folder: Path, captions=True, background_mode='al
         preview=Image.alpha_composite(preview.convert('RGBA'),overlay).convert('RGB')
         preview.save(folder/f'preview-{i+1}.jpg',quality=80)
     grid.save(folder/'grid.png')
-    with zipfile.ZipFile(folder/'stickers.zip','w',zipfile.ZIP_DEFLATED) as archive:
-        for name in [f'sticker-{i+1}.png' for i in range(9)]+['grid.png']:
-            archive.write(folder/name,name)
-        archive.writestr('README.txt','9 transparent PNG stickers + one grid. Save a local copy before your download expires.\n')
+    build_delivery_archive(folder)
     return {'width':512,'height':512,'cells':9}
+
+def build_delivery_archive(folder):
+    """Export the same nine masters; never regenerate or remat existing artwork."""
+    folder=Path(folder)
+    with tempfile.TemporaryDirectory(prefix='.delivery-',dir=folder) as temporary:
+        staging=Path(temporary)
+        with zipfile.ZipFile(staging/'stickers.zip','w',zipfile.ZIP_DEFLATED) as archive:
+            for index in range(1,10):
+                name=f'sticker-{index}'
+                with Image.open(folder/(name+'.png')) as original:
+                    original.load();sticker=original.convert('RGBA')
+                if sticker.size!=(512,512) or not has_transparency(sticker):
+                    raise ValueError('正式贴纸未通过尺寸与透明度检查')
+                alpha=sticker.getchannel('A')
+                if alpha.getextrema()[0]!=0 or any(alpha.crop(box).getextrema()[1] for box in
+                    ((0,0,512,1),(0,511,512,512),(0,0,1,512),(511,0,512,512))):
+                    raise ValueError('正式贴纸外围必须完全透明')
+                archive.write(folder/(name+'.png'),name+'.png')
+                for size in (256,240):
+                    path=staging/f'{name}-{size}.png'
+                    sticker.resize((size,size),Image.Resampling.LANCZOS).save(path)
+                    archive.write(path,f'PNG-{size}/{name}.png')
+                gif=staging/(name+'.gif')
+                save_wechat_gif(sticker.resize((240,240),Image.Resampling.LANCZOS),gif)
+                archive.write(gif,f'GIF-240/{name}.gif')
+                webp=staging/(name+'.webp');sticker.save(webp,format='WEBP',quality=80,method=0)
+                archive.write(webp,f'WebP-512/{name}.webp')
+            archive.write(folder/'grid.png','grid.png')
+            archive.writestr('README.txt',
+                '同一套九张贴纸，多尺寸、多格式透明文件：\n'
+                '根目录 sticker-1.png 至 sticker-9.png：512×512 RGBA PNG 正式母版，保留半透明边缘。\n'
+                'PNG-256/：九张 256×256 透明 PNG。\n'
+                'PNG-240/：九张 240×240 透明 PNG。\n'
+                'GIF-240/：九张 240×240 静态透明 GIF（二值透明，不是动画）。\n'
+                'WebP-512/：九张 512×512 透明 WebP。\n'
+                'grid.png：整套九宫格。\n'
+                '请解压后保存原文件；普通相册发送可能改变透明效果，各聊天软件需按各自流程导入。\n'
+                '请在下载链接失效前保存本地副本。\n')
+        os.replace(staging/'stickers.zip',folder/'stickers.zip')
+    return folder/'stickers.zip'
 
 def save_wechat_gif(image,path):
     image=image.convert('RGBA')

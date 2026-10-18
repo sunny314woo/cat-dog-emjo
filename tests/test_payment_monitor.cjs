@@ -23,7 +23,7 @@ function page(responses, storage = new Map([['emjo-order', 'order-1']])) {
       if (response instanceof Error) throw response;
       return response;
     },
-    renderMe: () => {}, restoreResult: () => {}, show: () => {}, renderResult: () => {}, toast: () => {},
+    renderMe: () => {}, refreshHistory: () => {}, restoreResult: () => {}, show: () => {}, renderResult: () => {}, toast: () => {},
   });
   vm.runInContext("let me={email:'buyer@example.com'},job;" + monitor, context);
   const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -87,4 +87,12 @@ test('Paddle initialization failures reject visibly and can be retried', async (
 test('checkout errors retain a visible recovery message', () => {
   assert.match(source, /paymentStatus\(e\.message\|\|'结账暂时无法启动，请稍后重试'\)/);
   assert.match(source, /e\.status===409\)\{\$\('account-dialog'\)\.showModal\(\);refreshHistory\(\)\}/);
+});
+
+test('payment review stops checkout polling and visibly warns against duplicate payment', async () => {
+  const p=page([{state:'PENDING',payment_state:'REVIEW'}]);
+  vm.runInContext("monitorPayment('order-1')",p.context);await p.settle();
+  assert.match(p.status.textContent,/付款核验异常/);
+  assert.match(p.status.textContent,/请勿重复付款/);
+  assert.equal(p.timers.length,0);
 });

@@ -37,7 +37,7 @@ def test_claim_security_transparency_and_ttl(setup):
     assert client.get(base+f'/files/{jid}/sticker-3.png').status_code==403
     assert create(client,catalog).status_code==402
     assert client.post(base+'/demo/unlock/'+jid,json={}).status_code==200
-    archive=zipfile.ZipFile(io.BytesIO(client.get(base+f'/files/{jid}/stickers.zip').content));assert len([n for n in archive.namelist() if n.endswith('.png')])==10
+    archive=zipfile.ZipFile(io.BytesIO(client.get(base+f'/files/{jid}/stickers.zip').content));assert len([n for n in archive.namelist() if n.endswith('.png')])==28
     with TestClient(client.app) as stranger:assert stranger.get(base+f'/files/{jid}/sticker-1.png').status_code==404
     assert (service.s.data_dir/'calibration'/jid).exists()
     assert not list((service.s.data_dir/'jobs'/jid).glob('input-*.jpg'))
@@ -241,6 +241,12 @@ def test_wrong_product_notification_is_held_for_review(setup,monkeypatch):
         assert tx.get('orders','mismatch')['state']=='PENDING'
         assert tx.get('payment_notifications','evt_wrong')['state']=='REVIEW'
         assert tx.get('review','evt_wrong')
+        order=tx.get('orders','mismatch');order['checkout_mode']='paddlejs';tx.put('orders','mismatch',order)
+    service.s.mode='live'
+    monkeypatch.setenv('PADDLE_PRICE_PACK_3_ID','pri_test')
+    monkeypatch.setenv('PADDLE_WEBHOOK_SECRET','test-secret')
+    with pytest.raises(RuleError,match='请勿重复付款'):
+        service.checkout(sid,'PACK_3',order_id='mismatch')
 
 
 def test_unlock_mail_retries_identical_payload_and_records_provider_id(setup,monkeypatch):
@@ -333,6 +339,8 @@ def test_share_links_are_cell_scoped_expiring_and_keep_alpha(setup):
 
 def test_live_free_budget_is_optional(setup,monkeypatch):
     client,service,catalog=setup
+    client.post('/sticker/api/auth/code',json={'email':'budget@example.com'})
+    client.post('/sticker/api/auth/verify',json={'email':'budget@example.com','code':'123456'})
     service.s.mode='live'
     monkeypatch.delenv('EMJO_DAILY_FREE_BUDGET_CNY',raising=False)
     monkeypatch.delenv('EMJO_COST_PER_GENERATION_CNY',raising=False)
@@ -506,3 +514,78 @@ def test_email_account_usage_survives_new_device_and_failed_generation(setup):
         grant=tx.get('grants','five-pack');grant['available']+=1;tx.put('grants','five-pack',grant)
     me=service.me(other_sid)
     assert (me['pack_used'],me['pack_pending'],me['pack_balance'])==(1,0,4)
+
+
+def full_discount(data):
+    data['discount_id']='dsc_full'
+    data['details']['totals']={'subtotal':'1000','tax':'0','discount':'1000','total':'0',
+        'grand_total':'0','balance':'0','currency_code':'USD'}
+    return data
+
+
+def test_full_discount_unlocks_original_job_and_queues_one_delivery(setup,monkeypatch):
+    client,service,catalog=setup
+    monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
+    jid=create(client,catalog).json()['id'];service.work_once()
+    client.post('/sticker/api/auth/code',json={'email':'coupon@example.com'})
+    client.post('/sticker/api/auth/verify',json={'email':'coupon@example.com','code':'123456'})
+    sid=service.digest(client.cookies.get('emjo_session'));user=service.current(sid)[1]
+    data=full_discount(payment_order(service,user['id'],'coupon','FIRST_PACK_UNLOCK',jid))
+    service.providers.paddle=lambda *args:data
+    service.enqueue_payment({'event_id':'evt_coupon','event_type':'transaction.completed','data':{'id':data['id']}})
+    assert service.payment_once()
+    service.complete_payment('evt_duplicate_coupon',data)
+    assert service.job(sid,jid)['unlocked']
+    assert service.me(sid)['pack_balance']==0
+    with service.store.transaction() as tx:
+        assert tx.get('orders','coupon')['state']=='PAID'
+        assert tx.get('orders','coupon')['amount']==0
+        assert len(tx.all('mail'))==1
+        assert len(tx.all('jobs'))==1
+    service.mail_once()
+    assert client.get('/sticker/api/orders/coupon').json()['delivery_state']=='SENT'
+
+
+@pytest.mark.parametrize('change',[
+    {'discount_id':None}, {'totals':{'discount':'999'}}, {'totals':{'balance':'1000'}},
+    {'totals':{'total':'-1'}}, {'totals':{'total':'0.0'}}, {'totals':{'currency_code':'EUR'}},
+    {'totals':{'subtotal':'0','discount':'0'}},
+])
+def test_unexplained_or_invalid_zero_totals_stay_locked(setup,monkeypatch,change):
+    _,service,_=setup
+    monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
+    sid,user=signed_in(service,'invalid-zero@example.com')
+    actual=full_discount(payment_order(service,user['id'],'invalid_zero'))
+    if 'discount_id' in change:actual['discount_id']=change['discount_id']
+    actual['details']['totals'].update(change.get('totals',{}))
+    service.providers.paddle=lambda *args:actual
+    service.enqueue_payment({'event_id':'evt_zero','event_type':'transaction.completed','data':{'id':actual['id']}})
+    assert service.payment_once()
+    assert service.me(sid)['pack_balance']==0
+    assert service.account_history(sid)['orders'][0]['payment_state']=='REVIEW'
+    with service.store.transaction() as tx:
+        assert tx.get('orders','invalid_zero')['state']=='PENDING'
+        assert tx.get('payment_notifications','evt_zero')['failure_code']=='invalid_amount'
+        assert not tx.all('mail')
+
+
+def test_live_generation_requires_email_and_same_account_cannot_repeat_trial(setup,monkeypatch):
+    client,service,catalog=setup
+    service.s.mode='live'
+    response=create(client,catalog)
+    assert response.status_code==401
+    with service.store.transaction() as tx:assert not tx.all('jobs')
+    # Log in using the demo OTP adapter, then exercise live admission without calling a provider.
+    service.s.mode='demo'
+    sid,user=signed_in(service,'one-trial@example.com')
+    service.s.mode='live';monkeypatch.delenv('EMJO_DAILY_FREE_BUDGET_CNY',raising=False)
+    args=(str(uuid.uuid4()),[(ROOT/'assets/cat-photo.png').read_bytes()],catalog['styles'][0]['id'])
+    job=service.create_job(sid,*args)
+    with service.store.transaction() as tx:
+        j=tx.get('jobs',job['id']);j['state']='READY';tx.put('jobs',j['id'],j)
+    now=service.clock();service.clock=lambda:now+61
+    service.s.mode='demo';second_sid,_=signed_in(service,'ONE-TRIAL@example.com')
+    service.s.mode='live'
+    with pytest.raises(RuleError) as exc:service.create_job(second_sid,*args)
+    assert exc.value.status==402
+    with service.store.transaction() as tx:assert len(tx.all('jobs'))==1

@@ -67,3 +67,24 @@ def test_wechat_gif_keeps_opaque_white_clothes_and_clear_background(tmp_path):
     result=Image.open(path).convert('RGBA')
     assert result.getpixel((120,120))==(255,255,255,255)
     assert result.getpixel((0,0))[3]==0
+
+
+def test_delivery_zip_contains_nine_transparent_files_in_every_format(tmp_path):
+    from server.imaging import prepare_pack,build_delivery_archive
+    prepare_pack((ROOT/'assets/cat-grid.png').read_bytes(),tmp_path,captions=False)
+    with zipfile.ZipFile(tmp_path/'stickers.zip') as archive:
+        assert len(archive.namelist())==47
+        for prefix,extension,size in [('', 'png',512),('PNG-256/','png',256),
+            ('PNG-240/','png',240),('GIF-240/','gif',240),('WebP-512/','webp',512)]:
+            for i in range(1,10):
+                with Image.open(BytesIO(archive.read(f'{prefix}sticker-{i}.{extension}'))) as image:
+                    assert image.size==(size,size)
+                    low,high=image.convert('RGBA').getchannel('A').getextrema()
+                    assert low==0 and high>=160
+        assert archive.read('sticker-1.png')==(tmp_path/'sticker-1.png').read_bytes()
+    original=(tmp_path/'stickers.zip').read_bytes()
+    # Failed export must preserve the previous complete package atomically.
+    Image.new('RGBA',(512,512),'white').save(tmp_path/'sticker-9.png')
+    import pytest
+    with pytest.raises(ValueError):build_delivery_archive(tmp_path)
+    assert (tmp_path/'stickers.zip').read_bytes()==original

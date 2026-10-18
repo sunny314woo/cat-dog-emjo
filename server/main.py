@@ -100,6 +100,8 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
             'me':service.me(sid),'calibration':{'enabled':settings.calibration_enabled,'limit':settings.calibration_limit,'days':settings.calibration_days},
             'workflow':'personalized_styles_v1',
             'payment_workflow':'durable_notifications_v1',
+            'delivery_workflow':'discounted_multiformat_v2',
+            'generation_requires_email':settings.mode=='live',
             'debug_retain_assets':settings.debug_retain_assets,
             'paddle':{'environment':os.getenv('PADDLE_ENVIRONMENT','sandbox'),'clientToken':os.getenv('PADDLE_CLIENT_TOKEN','')}})
     @app.get(prefix+'/me')
@@ -162,6 +164,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
             if not user or not row or row['user_id']!=user['id']:raise RuleError('订单不存在',404)
             mail=tx.get('mail','delivery-'+row['job_id']) if row.get('job_id') else None
             return {'state':row['state'],'product':row['product'],'generation_id':row.get('job_id'),
+                    'payment_state':service.order_payment_state(tx,row),
                     'delivery_state':mail['state'] if mail else None,'delivery_attempts':mail['attempts'] if mail else 0}
     @app.post(prefix+'/generations/{jid}/feedback')
     def feedback(jid:str,body:FeedbackInput,request:Request):
