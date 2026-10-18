@@ -1,5 +1,7 @@
 # 2026-10-18 九格表现力v0.8与Mac微信PNG未通过
 
+> 最新状态：用户已执行重启。2026-10-18 21:07:29（北京时间）启动的新常驻进程MainPID=103327、active/running；公网和loopback均已加载v0.8-distinct-actions，邮箱前置和素材保留开关已生效。下文早先“待重启”属历史记录。PNG实际发送白底仍未解决，新动作规则仍待原照实图验收。
+
 ## 用户要求
 
 用户明确否定“GIF可用就算解决PNG”：PNG也应达到透明使用效果。Mac微信将解压PNG直接拖入时，发送预览和发出的聊天消息均白底；同包GIF同路径透明。原文件alpha合格不能代替该验收。
@@ -68,3 +70,14 @@ CUA尝试切换到文件传输助手时坐标点击返回AXError.notImplemented�
 继续尝试导出PNG消息以核验微信处理后的格式/alpha时，WeChat的消息内容未出现在可操作AX树中，坐标右键点击持续返回AXError.notImplemented；无法通过当前UI接口完成图片“另存为”。没有读取微信私有数据库、缓存或其他聊天来绕过此限制。尚未取得微信保存出的图片文件，因此不能断言微信已转为JPEG或已从原文件删除alpha；目前确定的是用户反馈的白底已在实际发送验证中复现。
 
 用户如将本次文件传输助手中的任意PNG消息另存为并提供保存文件，可继续比较魔数、alpha与原文件；现有用户授权持续覆盖本次4个对照文件与文件传输助手，不扩大到其他接收者或额外测试文件。
+
+
+## 用户重启后的最终核验
+
+用户提供sudo重启与is-active输出active后，本次核验：MainPID=103327，ActiveEnterTimestamp=2026-10-18 13:07:29 UTC，即北京时间21:07:29；active/running。
+
+公网与loopback /catalog一致：payment_workflow=durable_notifications_v1、delivery_workflow=discounted_multiformat_v2、generation_requires_email=true、pack_prompt_version=v0.8-distinct-actions、debug_retain_assets=true。九项均包含独立pose/eyes。服务器main.py、catalog.py、service.py、imaging.py和config/catalog.json的SHA-256全部与本地一致。
+
+安全的匿名实际请求检查：/style-previews使用不可解码的占位字节（即使登录门禁回退也不能触发生图）返回401；对不存在任务的/style继续生成接口也返回401。没有调用模型、占用制作次数或发邮件。可读重启日志有Application startup complete，无Background operation failed或Traceback。
+
+原订单仍PAID，原作品READY且unlocked=true，交付邮件SENT、attempts=1、provider_id保留，没有重复交付。本次只证明新常驻规则已加载，不能把它当作PNG透明白底或新九格表现力验收通过。未付款素材暂不删除，未开启30天清理。
