@@ -348,13 +348,21 @@ class Service:
         if tx.get('grants',gid):return
         tx.put('grants',gid,{'id':gid,'user_id':uid,'available':quantity,'quantity':quantity,'consumed':0,
                             'revoked':False,'source':source,'created':self.clock()})
+    def payment_ready(self,product):
+        return self.s.mode=='live' and all(os.getenv(key) for key in (
+            'PADDLE_PRICE_'+product+'_ID','PADDLE_PRODUCT_ID','PADDLE_WEBHOOK_SECRET','PADDLE_API_KEY'))
+    def _first_unlock_used(self,tx,user_id):
+        # Pack purchases do not consume the separate first-trial unlock offer.
+        # A completed unlock remains used after refund, as with the existing trial policy.
+        return any(o['user_id']==user_id and o['product']=='FIRST_PACK_UNLOCK' and
+                   o['state'] in ('PAID','REFUNDED') for o in tx.all('orders'))
     def checkout(self,sid,product,jid=None,order_id=None):
         if product not in PRODUCTS:raise RuleError('商品不存在',404)
         _,user,_=self.current(sid)
         if not user:raise RuleError('请先验证邮箱',401)
         if self.s.mode=='demo': raise RuleError('当前是示例体验，不会收款；真实支付待配置',503)
         price=os.getenv('PADDLE_PRICE_'+product+'_ID','')
-        if not price or not os.getenv('PADDLE_PRODUCT_ID') or not os.getenv('PADDLE_WEBHOOK_SECRET'):raise RuleError('支付通知配置尚未完成，暂不能付款',503)
+        if not self.payment_ready(product):raise RuleError('支付通知配置尚未完成，暂不能付款',503)
         now=self.clock(); oid=uuid.uuid4().hex
         with self.store.transaction() as tx:
             current_session=tx.get('sessions',sid)
@@ -364,7 +372,8 @@ class Service:
                 job=self._owned(tx,sid,jid);self._ready(job)
                 if not (self.s.data_dir/'jobs'/jid/'stickers.zip').is_file():raise RuleError('作品文件暂时不可交付，请联系站点管理员',409)
                 if job['unlocked']:raise RuleError('这一套已经解锁',409)
-                if user['paid_once']:raise RuleError('首次优惠已使用',409)
+                if not job.get('free'):raise RuleError('首次解锁仅适用于免费体验作品',409)
+                if self._first_unlock_used(tx,user['id']):raise RuleError('首次优惠已使用',409)
                 # Keep the existing asset alive during checkout, without reviving expired files.
                 job['expires']=max(job['expires'],now+3600);tx.put('jobs',jid,job)
             existing=[o for o in tx.all('orders') if o['user_id']==user['id'] and o['state']=='PENDING']
@@ -509,7 +518,7 @@ class Service:
                 order['state']='REFUNDED';tx.put('orders',oid,order);tx.put('events',event_id,{'id':event_id});return
             if order['product']=='FIRST_PACK_UNLOCK':
                 job=tx.get('jobs',order['job_id'])
-                if not job or job['state']!='READY' or self._expired(job) or job['unlocked'] or user['paid_once'] or not (self.s.data_dir/'jobs'/job['id']/'stickers.zip').is_file():
+                if not job or job['state']!='READY' or self._expired(job) or job['unlocked'] or not job.get('free') or self._first_unlock_used(tx,user['id']) or not (self.s.data_dir/'jobs'/job['id']/'stickers.zip').is_file():
                     order['state']='REFUND_REQUIRED'
                 else:
                     job.update(unlocked=True,user_id=user['id'],expires=self.clock()+self.s.paid_ttl_hours*3600)

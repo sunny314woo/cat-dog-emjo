@@ -95,7 +95,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
         sid=identity(request)
         public_styles=[{k:v for k,v in s.items() if k!='prompt'} for s in CATALOG['styles'] if s['active']]
         products=[dict(p,price_id=os.getenv('PADDLE_PRICE_'+p['id']+'_ID') or None,
-                       available=settings.mode=='live' and bool(os.getenv('PADDLE_WEBHOOK_SECRET')) and bool(os.getenv('PADDLE_PRICE_'+p['id']+'_ID'))) for p in PRODUCTS.values()]
+                       available=service.payment_ready(p['id']) and bool(os.getenv('PADDLE_CLIENT_TOKEN'))) for p in PRODUCTS.values()]
         return session_response(request,{'styles':public_styles,'theme':CATALOG['theme'],'products':products,
             'me':service.me(sid),'calibration':{'enabled':settings.calibration_enabled,'limit':settings.calibration_limit,'days':settings.calibration_days},
             'workflow':'personalized_styles_v1',

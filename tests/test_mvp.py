@@ -245,6 +245,7 @@ def test_wrong_product_notification_is_held_for_review(setup,monkeypatch):
     service.s.mode='live'
     monkeypatch.setenv('PADDLE_PRICE_PACK_3_ID','pri_test')
     monkeypatch.setenv('PADDLE_WEBHOOK_SECRET','test-secret')
+    monkeypatch.setenv('PADDLE_API_KEY','test-api-key')
     with pytest.raises(RuleError,match='请勿重复付款'):
         service.checkout(sid,'PACK_3',order_id='mismatch')
 
@@ -357,6 +358,7 @@ def test_paddlejs_checkout_reuses_order_and_does_not_need_write_api(setup,monkey
     monkeypatch.setenv('PADDLE_PRICE_PACK_3_ID','pri_three')
     monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
     monkeypatch.setenv('PADDLE_WEBHOOK_SECRET','test-secret')
+    monkeypatch.setenv('PADDLE_API_KEY','test-api-key')
     service.providers.paddle=lambda *args:pytest.fail('Opening checkout must not call a write API')
     first=service.checkout(sid,'PACK_3')
     assert first['items']==[{'priceId':'pri_three','quantity':1}]
@@ -443,6 +445,7 @@ def test_pending_unlock_orders_stay_bound_per_work_and_are_resumable(setup,monke
     monkeypatch.setenv('PADDLE_PRICE_PACK_1_ID','pri_one')
     monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
     monkeypatch.setenv('PADDLE_WEBHOOK_SECRET','test-secret')
+    monkeypatch.setenv('PADDLE_API_KEY','test-api-key')
     for jid in ('work-old','work-new'):
         folder=service.s.data_dir/'jobs'/jid;folder.mkdir(parents=True)
         (folder/'stickers.zip').write_bytes(b'zip')
@@ -589,3 +592,105 @@ def test_live_generation_requires_email_and_same_account_cannot_repeat_trial(set
     with pytest.raises(RuleError) as exc:service.create_job(second_sid,*args)
     assert exc.value.status==402
     with service.store.transaction() as tx:assert len(tx.all('jobs'))==1
+
+@pytest.mark.parametrize('missing', ['PADDLE_PRODUCT_ID','PADDLE_WEBHOOK_SECRET','PADDLE_PRICE_PACK_3_ID','PADDLE_CLIENT_TOKEN','PADDLE_API_KEY',None])
+def test_catalog_hides_packages_missing_checkout_configuration(setup,monkeypatch,missing):
+    client,service,_=setup
+    service.s.mode='live'
+    for key,value in {'PADDLE_PRODUCT_ID':'pro_test','PADDLE_WEBHOOK_SECRET':'test-hook',
+                      'PADDLE_PRICE_PACK_3_ID':'pri_three','PADDLE_CLIENT_TOKEN':'test_public','PADDLE_API_KEY':'test-api-key'}.items():
+        monkeypatch.setenv(key,value)
+    if missing:monkeypatch.delenv(missing,raising=False)
+    products=client.get('/sticker/api/catalog').json()['products']
+    three=next(p for p in products if p['id']=='PACK_3')
+    assert three['available'] is (missing is None)
+
+
+def ready_trial_for_checkout(service,sid,user,jid):
+    folder=service.s.data_dir/'jobs'/jid;folder.mkdir(parents=True)
+    (folder/'stickers.zip').write_bytes(b'original-nine-stickers')
+    with service.store.transaction() as tx:
+        account=tx.get('users',user['id']);account['trial_used']=True;tx.put('users',user['id'],account)
+        session=tx.get('sessions',sid);session['trial_used']=True;tx.put('sessions',sid,session)
+        tx.put('jobs',jid,{'id':jid,'session_id':sid,'user_id':user['id'],'state':'READY',
+            'free':True,'unlocked':False,'selected':[1,2],'expires':service.clock()+86400,'created':service.clock()})
+    return folder/'stickers.zip'
+
+
+def checkout_transaction(checkout):
+    return {'id':'txn_'+checkout['order_id'],'status':'completed',
+        'custom_data':checkout['customData'],
+        'items':[{'quantity':1,'price':{'id':checkout['items'][0]['priceId'],'product_id':'pro_test'}}],
+        'details':{'totals':{'total':'1999'}},'currency_code':'USD'}
+
+
+@pytest.mark.parametrize('completion_order',['pack_before_unlock_checkout','pack_then_unlock','unlock_then_pack'])
+def test_pack_purchase_preserves_original_trial_unlock_in_either_notification_order(setup,monkeypatch,completion_order):
+    _,service,_=setup
+    inviter_sid,inviter=signed_in(service,'unlock-inviter@example.com')
+    sid,user=signed_in(service,'pack-first@example.com',inviter['referral_code'])
+    archive=ready_trial_for_checkout(service,sid,user,'original-trial')
+    original=archive.read_bytes()
+    service.s.mode='live'
+    for key,value in {'PADDLE_PRODUCT_ID':'pro_test','PADDLE_WEBHOOK_SECRET':'test-hook',
+                      'PADDLE_API_KEY':'test-api-key','PADDLE_PRICE_PACK_3_ID':'pri_three',
+                      'PADDLE_PRICE_FIRST_PACK_UNLOCK_ID':'pri_first'}.items():
+        monkeypatch.setenv(key,value)
+    pack=service.checkout(sid,'PACK_3')
+    if completion_order=='pack_before_unlock_checkout':
+        service.complete_payment('evt_pack_first',checkout_transaction(pack))
+        assert service.current(sid)[1]['paid_once'] is True
+    unlock=service.checkout(sid,'FIRST_PACK_UNLOCK','original-trial')
+    notifications=[('evt_unlock',checkout_transaction(unlock))]
+    if completion_order=='pack_then_unlock':notifications.insert(0,('evt_pack',checkout_transaction(pack)))
+    if completion_order=='unlock_then_pack':notifications.append(('evt_pack',checkout_transaction(pack)))
+    for event,data in notifications:service.complete_payment(event,data)
+    # Duplicate notifications do not grant more packs or queue a second delivery.
+    service.complete_payment('evt_pack_duplicate',checkout_transaction(pack))
+    service.complete_payment('evt_unlock_duplicate',checkout_transaction(unlock))
+    assert service.job(sid,'original-trial')['unlocked'] is True
+    assert service.job(sid,'original-trial')['selected']==[1,2]
+    assert archive.read_bytes()==original
+    assert service.me(sid)['pack_balance']==3
+    assert service.me(sid)['trial_available'] is False
+    assert service.me(inviter_sid)['pack_balance']==1
+    with service.store.transaction() as tx:
+        assert len(tx.all('jobs'))==1 and len(tx.all('mail'))==1
+        assert tx.get('orders',unlock['order_id'])['state']=='PAID'
+        assert tx.get('orders',pack['order_id'])['state']=='PAID'
+
+
+def test_duplicate_first_unlock_notifications_serialize_to_one_success(setup,monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    _,service,_=setup
+    sid,user=signed_in(service,'duplicate-first@example.com')
+    for jid in ('trial-one','trial-two','trial-three'):
+        ready_trial_for_checkout(service,sid,user,jid)
+    monkeypatch.setenv('PADDLE_PRODUCT_ID','pro_test')
+    # Simulate previously opened duplicate checkout windows completing together.
+    first=payment_order(service,user['id'],'first-one','FIRST_PACK_UNLOCK','trial-one')
+    second=payment_order(service,user['id'],'first-two','FIRST_PACK_UNLOCK','trial-two')
+    barrier=threading.Barrier(2)
+    def complete(event,data):
+        barrier.wait(timeout=5)
+        service.complete_payment(event,data)
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        futures=[workers.submit(complete,'evt_'+data['id'],data) for data in (first,second)]
+        for future in futures:future.result(timeout=10)
+    with service.store.transaction() as tx:
+        orders=tx.all('orders')
+        assert sorted(o['state'] for o in orders)==['PAID','REFUND_REQUIRED']
+        assert sum(j['unlocked'] for j in tx.all('jobs'))==1
+        assert len(tx.all('mail'))==1
+        paid=next(o for o in orders if o['state']=='PAID')
+    assert service.me(sid)['pack_balance']==0
+    service.s.mode='live'
+    for key,value in {'PADDLE_WEBHOOK_SECRET':'test-hook','PADDLE_API_KEY':'test-api-key',
+                      'PADDLE_PRICE_FIRST_PACK_UNLOCK_ID':'pri_first'}.items():
+        monkeypatch.setenv(key,value)
+    with pytest.raises(RuleError,match='首次优惠已使用'):
+        service.checkout(sid,'FIRST_PACK_UNLOCK','trial-three')
+    service.refund('evt_refund_first',paid['transaction_id'])
+    with pytest.raises(RuleError,match='首次优惠已使用'):
+        service.checkout(sid,'FIRST_PACK_UNLOCK','trial-three')
