@@ -5,7 +5,7 @@
 - 官网设置不再把余额0写成“还可以制作0套完整表情包”；说明免费任选2张、原套付款解锁9张和新制作余额。分享底色明确用于检查衣物/头发/手部，且不写入下载文件。
 - 3/5套已有支付配置，Paddle公开实时报价分别US$19.99/US$29.99；保留入口。未配置或未返回报价的制作套餐不展示。未新建交易、扣款或发送邮件。
 - 原订单九张已完成一次保留全部RGB的alpha返修，服务器素材版本为1；旧目录完整备份，多尺寸PNG/GIF/WebP全部重导出。
-- 新版后台三文件已备份上传、编译检查，但本次尚未重启常驻进程。上次用户成功重启的是v0.8，不应再说上次重启未完成。当前新提示词与支付顺序修复须重新加载后才生效。
+- 新版后台三文件已备份上传、编译检查；用户已于2026-10-19 09:04:39 UTC成功重启常驻服务。随后通过进程状态、loopback与公网API核实，v0.9提示词及支付顺序修复已加载，无需再次重启。
 - 通用在线抠图、Mac微信普通PNG消息白底显示、新提示词真实九格表现力仍未通过完整验收，不能把本套受控返修推广为自动生产质量已根治。
 
 ## 网站发布与验证
@@ -58,17 +58,17 @@ v0.9-human-silhouette补人物脸型/发际线/五官/服装锚点，眉眼与�
 
 Mac微信原PNG发送另存为与原ZIP文件逐字节相同，说明该次alpha未丢；三种PNG编码测试的普通消息显示均白底，GIF透明。当前修正衣物alpha不能证明微信消息显示问题解决，不能伪装格式或拿GIF替代PNG验收。
 
-## 后台更新与下一步
+## 后台更新与常驻核验
 
 服务目录`/home/wisteria/emjo/current`三文件：server/catalog.py、server/main.py、server/service.py。旧版本备份`/home/wisteria/emjo/backups/quality-v09-20261019-083930`，上传前后哈希及编译已核对。当前配置继续保留`debug_retain_assets=true`，未启用30天清理。
 
-`sudo -n true`返回需要密码。用户须在服务器执行：
+用户已执行重启及状态检查，返回`active`。随后通过SSH检查systemd，并分别读取loopback与公网catalog，核验结果如下：
 
-```bash
-sudo systemctl restart emjo.service
-sudo systemctl is-active emjo.service
-```
+- `MainPID=137731`，`ActiveState=active`，`SubState=running`。
+- `ActiveEnterTimestamp=Mon 2026-10-19 09:04:39 UTC`，即北京时间2026-10-19 17:04:39。
+- 两处API均返回`pack_prompt_version=v0.9-human-silhouette`、`generation_requires_email=true`、`debug_retain_assets=true`。
+- 公网可用商品为`FIRST_PACK_UNLOCK`、`PACK_1`、`PACK_3`、`PACK_5`。
 
-之后核对正式catalog的pack_prompt_version=v0.9-human-silhouette、generation_requires_email=true、debug_retain_assets=true，以及进程启动时间；不得凭磁盘文件或短导入声称常驻已加载。旧预览继续其保存版本，不静默替换。
+常驻进程已加载新版本；本次文档完善不需要再重启或发布官网。旧预览继续其保存版本，不静默替换。服务启动与配置核验不代替新提示词实图、通用抠图或Mac微信PNG显示验收。
 
 验证：完整Python套件74项通过；JS付款监控6项通过。涵盖付款与首套解锁顺序/并发、返修RGB/hash/状态拒绝与目录恢复、既有两阶段/保留/GIF/导出。语法与diff格式检查通过。所有用户图、模型、实验和服务器receipt仅在被忽略的私有目录，不提交。
