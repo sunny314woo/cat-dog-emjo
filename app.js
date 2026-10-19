@@ -9,6 +9,13 @@ const toast=text=>{$('toast').textContent=text;$('toast').hidden=false;clearTime
 async function api(path,body,method){const r=await fetch(API+path,{method:method||(body?'POST':'GET'),credentials:'include',headers:body&&!(body instanceof FormData)?{'Content-Type':'application/json'}:{},body:body instanceof FormData?body:body?JSON.stringify(body):undefined});const data=await r.json();if(!r.ok){const e=new Error(data.error||'暂时无法完成，请稍后再试');e.status=r.status;throw e}return data}
 function action(id,fn){$(id).addEventListener('click',async()=>{const b=$(id);b.disabled=true;try{await fn()}catch(e){toast(e.message)}finally{b.disabled=false}})}
 function node(tag,text,className){const el=document.createElement(tag);if(text!==undefined)el.textContent=text;if(className)el.className=className;return el}
+const shortId=id=>String(id||'').slice(0,8);
+const workTitle=item=>`作品 #${shortId(item.id)} · 1 套（9 张）`;
+function availablePackProducts(){return catalog.products.filter(p=>p.packs&&p.available&&p.price_id&&catalog.paddle.clientToken&&localizedPrices.has(p.id))}
+function taskButton(label,fn,className='button secondary'){const b=node('button',label,className);b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){toast(e.message)}finally{b.disabled=false}};return b}
+async function openWork(id){const email=me.email;clearTimeout(pollTimer);const item=await api('/generations/'+id);if(me.email!==email)return;job=item;saved('emjo-job',job.id);restoreResult();$('account-dialog').close();if(busyStates.includes(job.state))await poll();else await displayJob();window.scrollTo({top:0,behavior:'instant'})}
+function orderAmount(item){if(!Number.isSafeInteger(item.amount)||!item.currency)return '';try{const digits=new Intl.NumberFormat('zh-CN',{style:'currency',currency:item.currency}).resolvedOptions().maximumFractionDigits;const number=new Intl.NumberFormat('zh-CN',{minimumFractionDigits:digits,maximumFractionDigits:digits});return `${item.currency} ${number.format(item.amount/10**digits)}`}catch{return ''}}
+function deliveryLabel(delivery){return {SENT:'邮件已提交发送',FAILED:'邮件发送失败，可先下载',PENDING:'交付邮件排队中',PROCESSING:'交付邮件发送中'}[delivery?.state]||'尚无交付邮件记录'}
 function show(view){$('hero').hidden=true;$('studio').hidden=false;document.body.dataset.screen=view;$('mobile-title').textContent=view==='maker'?'上传与选择':view==='progress-view'?'制作表情包':'领取小心情';for(const id of ['maker','progress-view','result-view'])$(id).hidden=id!==view;$('step-badge').textContent=view==='maker'?'01 / 上传与选择':view==='progress-view'?'02 / 制作中':'03 / 领取小心情'}
 function renderEntitlements(){
  const history=accountHistory?.email===me.email?accountHistory:null;
@@ -16,12 +23,12 @@ function renderEntitlements(){
  const trial=history?.jobs.some(j=>j.free&&!j.unlocked&&j.state==='READY');
  $('account-access').textContent=unlocked?`已有 ${unlocked} 套作品解锁全部 9 张，可在上方“我的作品”下载。`:me.trial_available?'首次免费体验可用：制作后任选 2 张下载、分享；付费解锁同一套全部 9 张。':trial?'免费体验作品已保留，可领取所选 2 张；打开作品即可付费解锁同一套全部 9 张。':'作品的领取与解锁状态见上方“我的作品”。';
  $('new-pack-balance').hidden=!(me.pack_balance>0);$('account-balance').textContent=me.pack_balance||0;
- $('account-usage').hidden=!(me.pack_total>0);$('account-usage').textContent=`新制作次数：累计获得 ${me.pack_total||0} 次 · 已使用 ${me.pack_used||0} 次 · 制作中 ${me.pack_pending||0} 次`;
- $('quota-copy').textContent=me.trial_available?'首次体验，免费任选 2 张；付费解锁同一套 9 张。':me.pack_balance>0?`可新制作 ${me.pack_balance} 套，每套 9 张。`:'已有作品可在“我的作品”领取或解锁。';
+ $('account-usage').hidden=!(me.pack_total>0);$('account-usage').textContent=`制作额度：累计获得 ${me.pack_total||0} 套 · 已使用 ${me.pack_used||0} 套 · 已预留 ${me.pack_pending||0} 套`;
+ $('quota-copy').textContent=me.trial_available?'首次体验，免费任选 2 张；付费解锁同一套 9 张。':me.pack_balance>0?`还可使用 ${me.pack_balance} 套额度；新制作或解锁已有作品，每套各用 1 套额度。`:'已有作品可在“我的作品”领取或解锁。';
 }
 function renderMe(){ $('mobile-start').textContent=me.email?'上传照片，开始制作 →':'验证邮箱，开始制作 →';$('account-button').textContent='⚙ 设置';$('auth-form').hidden=!!me.email;$('account-details').hidden=!me.email;$('account-email').textContent=me.email||'';renderEntitlements();
- const products=catalog.products.filter(p=>p.packs&&p.available&&p.price_id&&catalog.paddle.clientToken&&localizedPrices.has(p.id));
- $('new-pack-products').hidden=!products.length;$('product-list').replaceChildren();for(const p of products){const row=node('div',undefined,'product-row');const details=node('div',undefined,'product-benefits');details.append(node('strong',`新制作 ${p.packs} 套 · 每套 9 张`),node('small','用于新作品，可分次制作；已有体验作品请从“我的作品”解锁。'),node('span',priceLabel(p)));row.append(details);const b=node('button','购买制作次数','button secondary');b.onclick=()=>checkout(p.id).catch(e=>toast(e.message));row.append(b);$('product-list').append(row)}$('unlock-price').textContent=priceLabel(catalog.products.find(p=>p.id==='FIRST_PACK_UNLOCK'));$('invite-url').value=inviteURL();}
+ const products=availablePackProducts();
+ $('new-pack-products').hidden=!products.length;$('product-list').replaceChildren();for(const p of products){const row=node('div',undefined,'product-row');const details=node('div',undefined,'product-benefits');details.append(node('strong',`${p.packs} 套制作额度`),node('small',`可分次使用。付款后增加 ${p.packs} 套，账户可用额度预计为 ${(me.pack_balance||0)+p.packs} 套。新制作或解锁已有作品，每套各用 1 套额度。`),node('span',priceLabel(p)));row.append(details,taskButton(`购买 ${p.packs} 套额度`,()=>checkout(p.id,null)));$('product-list').append(row)}$('invite-url').value=inviteURL();if(job?.state==='READY')renderUnlockOptions();}
 function priceLabel(product){return product?.available?(localizedPrices.get(product.id)?`参考价 ${localizedPrices.get(product.id)} · 以结账页为准`:'金额以结账页为准'):'暂未开放付款'}
 async function refreshPrices(){try{const products=catalog.products.filter(p=>p.available&&p.price_id);if(!products.length)return;await initPaddle();const result=await Paddle.PricePreview({items:[...new Set(products.map(p=>p.price_id))].map(priceId=>({priceId,quantity:1}))});for(const line of result.data.details.lineItems){const price=line.formattedTotals?.total;if(price)for(const p of products)if(p.price_id===line.price.id)localizedPrices.set(p.id,price)}renderMe()}catch{renderMe()}}
 function inviteURL(){if(!me?.referral_code)return '';const url=new URL('/sticker/',location.origin);url.searchParams.set('ref',me.referral_code);return url.href}
@@ -52,7 +59,7 @@ const next=$('next-style');next.parentNode.insertBefore(document.querySelector('
 next.parentNode.insertBefore($('calibration-option'),next);
 renderStyles();for(const e of catalog.theme.expressions)$('emotion-chips').append(node('span',`${e.icon||'♡'} ${e.name||e.emotion}`,'emotion-chip'));
 if(catalog.calibration.enabled){$('calibration-option').hidden=false;$('calibration-copy').textContent=`可选：同意将本次照片与结果用于提示词校准。仅收集前 ${catalog.calibration.limit} 份同意的成功案例，最多保留 ${catalog.calibration.days} 天，可随时撤回。`}
-const p=catalog.products.find(p=>p.id==='FIRST_PACK_UNLOCK');$('unlock-price').textContent=priceLabel(p);$('unlock-button').disabled=!p.available;refreshPrices();
+refreshPrices();
 const ref=new URLSearchParams(location.search).get('ref');if(ref)saved('emjo-ref',ref);const jid=saved('emjo-job');if(jid){try{job=await api('/generations/'+jid);restoreResult();$('resume-result').hidden=!['READY','STYLE_READY'].includes(job.state);if(job.state==='STYLE_READY'){$('resume-result').textContent='继续选择我的画风';await displayJob()}if(busyStates.includes(job.state))await poll()}catch{saved('emjo-job','')}}
 if(me.email&&saved('emjo-order'))monitorPayment(saved('emjo-order'));
 if(new URLSearchParams(location.search).has('_ptxn'))initPaddle();}catch(e){$('connection-error').hidden=false;$('connection-error').textContent='小画室暂时没有连接成功。请稍后刷新页面再试。';toast(e.message)}}
@@ -66,14 +73,15 @@ function monitorPayment(oid){
   let delay=2000;
   try{
    const order=await api('/orders/'+encodeURIComponent(oid));if(request!==paymentRequest)return;
+   if(order.payment_review_required){me=await api('/me');if(request!==paymentRequest)return;renderMe();paymentStatus('这笔订单有额外付款需要人工核对，请勿重复付款。已有交付与余额可在设置中查看。');refreshHistory();saved('emjo-order','');return}
    if(order.state==='PAID'){
     if(!applied){
      me=await api('/me');if(request!==paymentRequest)return;renderMe();
      if(order.generation_id){job=await api('/generations/'+order.generation_id);if(request!==paymentRequest)return;saved('emjo-job',job.id);restoreResult();show('result-view');renderResult()}
-     toast(order.generation_id?'支付已确认，九张贴纸已解锁':'支付已确认，制作次数已到账');applied=true;refreshHistory();
+     toast(order.fulfillment==='ALREADY_UNLOCKED'?'作品已解锁，本次购买额度已全部到账':order.generation_id?'支付已确认，这份作品已解锁':'支付已确认，制作次数已到账');applied=true;refreshHistory();
     }
     const delivery=order.delivery_state;
-    paymentStatus(!order.generation_id?'支付已确认，制作次数已到账。':delivery==='SENT'?'贴纸邮件已提交发送，请检查收件箱和垃圾邮件。':delivery==='FAILED'?(order.delivery_attempts>=4?'贴纸已解锁，邮件多次发送失败，请下载 ZIP 并联系站点支持。':'贴纸已解锁，邮件暂未发送成功，正在安排重试。'):'贴纸已解锁，邮件正在发送。');
+    paymentStatus(order.fulfillment==='ALREADY_UNLOCKED'?'目标作品已解锁，本次购买额度已全部存入账户，没有重复消耗。':!order.generation_id?'支付已确认，制作次数已到账。':delivery==='SENT'?'贴纸邮件已提交发送，请检查收件箱和垃圾邮件。':delivery==='FAILED'?(order.delivery_attempts>=4?'贴纸已解锁，邮件多次发送失败，请下载 ZIP 并联系站点支持。':'贴纸已解锁，邮件暂未发送成功，正在安排重试。'):'贴纸已解锁，邮件正在发送。');
     if(!order.generation_id||delivery==='SENT'){refreshHistory();saved('emjo-order','');return}
     delay=10000;
    }else if(order.state==='REFUND_REQUIRED'||order.state==='REFUNDED'){
@@ -101,7 +109,44 @@ async function poll(){clearTimeout(pollTimer);pollTimer=null;try{job=await api('
 async function displayJob(){if(job.state==='STYLE_READY'){show('maker');makerStep('style');renderStyles();$('quota-copy').textContent='本套制作机会已预留';}else if(job.state==='READY'){show('result-view');renderResult();me=await api('/me');renderMe()}else if(busyStates.includes(job.state)){show('progress-view');$('progress-title').textContent={PREVIEW_QUEUED:'照片已收到',PREVIEW_GENERATING:'正在画出你的四种风格',QUEUED:'已选定你的画风',GENERATING:'正在画出九种心情',PROCESSING:'正在整理透明贴纸'}[job.state];$('progress-copy').textContent=job.demo?'这是固定样例制作演示，不会根据上传照片生成。':'本步骤预计 1–2 分钟，繁忙时可能稍久。完成后会自动出现。';['stage-1','stage-2','stage-3'].forEach((id,i)=>$(id).classList.toggle('active',i<({PREVIEW_QUEUED:1,PREVIEW_GENERATING:2,QUEUED:1,GENERATING:2,PROCESSING:3}[job.state])))}else{show('maker');makerStep('upload');toast(job.error||(job.state==='EXPIRED'?'这份心情已过期，请使用已保存的副本。':'作品暂时无法领取'));saved('emjo-job','');requestId=null;style=null;renderStyles();me=await api('/me');renderMe()}}
 function restoreResult(){try{const v=JSON.parse(saved('emjo-reveal-'+job.id)||'[]');revealed=new Set(v)}catch{revealed=new Set()}selection=new Set(job.selected||[])}
 function persistReveal(){saved('emjo-reveal-'+job.id,JSON.stringify([...revealed]))}
-function renderResult(){if(job.selected?.length)selection=new Set(job.selected);$('result-grid').replaceChildren();for(const e of job.cells||catalog.theme.expressions){const i=e.cell_index,open=revealed.has(i)||job.unlocked||job.selected.includes(i),allowed=job.unlocked||job.selected.includes(i);const card=node('article',undefined,'sticker-card'+(selection.has(i)?' selected':''));card.dataset.cell=i;const picture=node('button',undefined,'sticker-picture');picture.setAttribute('aria-label',open?`${e.name||e.emotion}预览`:`拆开${e.name||e.emotion}`);const flipper=node('span',undefined,'card-flipper'+(open?' is-revealed':''));const back=node('span',undefined,'card-face card-back');const seal=node('span',undefined,'sealed');seal.append(node('span','✦','seal-symbol'),node('span',e.emotion,'seal-text'),node('small','点击翻开'));back.append(node('span',`0${i}`,'card-number'),seal,node('span','给你的一点小惊喜','card-whisper'));const front=node('span',undefined,'card-face card-front');const im=node('img');im.src=API+`/files/${job.id}/${allowed?'sticker-'+i+'.png':'preview-'+i+'.jpg'}?v=20261012-account-recovery`;im.alt=`${e.label} · ${allowed?'512×512透明贴纸':'保护预览'}`;front.classList.toggle('transparent-master',allowed);front.append(im);front.setAttribute('aria-hidden',!open);back.setAttribute('aria-hidden',open);flipper.append(back,front);picture.append(flipper);picture.onclick=()=>{if(!open)return revealCell(i);if(allowed)return openShare(i).catch(e=>toast(e.message));if(!job.free)return toast('这套作品尚未解锁，请购买套餐或解锁整套');if(!job.selected.length){if(selection.has(i))selection.delete(i);else if(selection.size<2)selection.add(i);else return toast('先取消一张，再换选');renderResult()}else toast('解锁整套后可以分享这张')};card.append(picture);const badge=node('span',allowed?'↗':selection.has(i)?'✓':'🔒','card-status');badge.setAttribute('aria-label',allowed?'已解锁，点击分享':selection.has(i)?'已选':'未解锁');card.append(badge);$('result-grid').append(card)}$('claim-area').hidden=job.unlocked||!job.free;$('claim-button').hidden=!!job.selected.length;$('claim-button').disabled=selection.size!==2;$('selection-copy').textContent=job.selected.length?'点已解锁贴纸，即可下载或分享':`翻开后再点选 · 免费选 ${selection.size}/2 张`;$('unlock-area').hidden=job.unlocked;$('delivery-area').hidden=!job.unlocked;$('withdraw-calibration').hidden=!job.calibration;$('privacy-expiry').textContent=job.debug_retained?'生成作品（含未付款作品）暂不自动删除。':job.expires?`本套作品下载截止：${new Date(job.expires*1000).toLocaleString('zh-CN')}。`:'生成结果按下载窗口保留。';$('review-styles').hidden=!job.preview_styles?.length;$('result-description').textContent=job.demo?'本地样例预览 · 没有真实解锁':job.unlocked?'已解锁全部 9 张 · 点击贴纸即可分享':job.selected?.length?'已领取 2 张 · 点击贴纸即可分享':job.free?'九张均为保护预览；免费体验可任选两张':'九张均为保护预览；选择套餐后即可继续'}
+function renderUnlockOptions(){
+ if(!job||job.state!=='READY')return;
+ const targetId=job.id,workflowReady=catalog.order_workflow==='work_bound_packs_v1',options=job.unlock_options||{},first=catalog.products.find(p=>p.id==='FIRST_PACK_UNLOCK');
+ const useBalance=workflowReady&&options.can_use_balance&&me.pack_balance>0,firstOffer=workflowReady&&options.first_offer_available&&first?.available;
+ $('result-work-id').textContent=workTitle(job);
+ $('unlock-area').hidden=job.unlocked;
+ $('unlock-title').textContent='解锁这份作品 · 1 套（9 张）';
+ $('unlock-summary').textContent=`本次解锁作品 #${shortId(job.id)} 已生成的这一套，付款或使用额度后可下载、分享并接收交付邮件。`;
+ $('balance-unlock-area').hidden=!useBalance;
+ $('balance-unlock-copy').textContent=`使用 1 套额度解锁作品 #${shortId(job.id)}；当前 ${me.pack_balance||0} 套，解锁后剩余 ${Math.max(0,(me.pack_balance||0)-1)} 套。`;
+ $('balance-unlock-button').textContent='使用 1 套额度，解锁这份作品';
+ $('first-unlock-area').hidden=!firstOffer;
+ $('unlock-button').disabled=!firstOffer;
+ $('unlock-button').textContent='首次优惠，解锁这份作品';
+ $('unlock-price').textContent=firstOffer?priceLabel(first):'';
+ $('first-unlock-copy').textContent=`首次优惠仅解锁作品 #${shortId(job.id)} 的 1 套（9 张）；已有 ${me.pack_balance||0} 套制作额度继续保留。`;
+ const products=workflowReady&&options.can_purchase_pack?availablePackProducts():[];
+ const store=$('work-unlock-store');store.hidden=!products.length;
+ if(store.dataset.job!==job.id){store.open=!useBalance&&!firstOffer;store.dataset.job=job.id}
+ $('work-unlock-products').replaceChildren();
+ for(const p of products){
+  const row=node('div',undefined,'product-row work-product-row'),details=node('div',undefined,'product-benefits');
+  details.append(node('strong',`购买 ${p.packs} 套额度 · 本次解锁 1 套`),node('small',`付款后解锁作品 #${shortId(job.id)} 的 1 套（9 张），本次购买剩余 ${p.packs-1} 套继续保留；账户可用额度预计为 ${(me.pack_balance||0)+p.packs-1} 套。`),node('span',priceLabel(p)));
+  row.append(details,taskButton(`购买并解锁这份作品`,()=>checkout(p.id,targetId)));
+  $('work-unlock-products').append(row);
+ }
+ $('unlock-unavailable').hidden=!!(useBalance||firstOffer||products.length);
+ $('unlock-unavailable').textContent=!workflowReady?'解锁服务更新中，请稍后刷新。':options.can_purchase_pack?'可用付款方式正在读取，请稍后刷新；已有作品会继续保留。':options.reason||'请稍后刷新查看解锁方式；已有作品会继续保留。';
+}
+async function unlockWithBalance(){
+ if(catalog.order_workflow!=='work_bound_packs_v1')throw new Error('解锁服务更新中，请稍后刷新。');
+ const id=job.id,email=me.email;
+ const unlocked=await api(`/generations/${id}/unlock`,{}),updatedMe=await api('/me');
+ if(me.email!==email)return;
+ me=updatedMe;if(job?.id===id){job=unlocked;renderResult()}renderMe();refreshHistory();
+ toast(`作品 #${shortId(id)} 已解锁 · 1 套（9 张）`);
+}
+function renderResult(){if(job.selected?.length)selection=new Set(job.selected);$('result-grid').replaceChildren();for(const e of job.cells||catalog.theme.expressions){const i=e.cell_index,open=revealed.has(i)||job.unlocked||job.selected.includes(i),allowed=job.unlocked||job.selected.includes(i);const card=node('article',undefined,'sticker-card'+(selection.has(i)?' selected':''));card.dataset.cell=i;const picture=node('button',undefined,'sticker-picture');picture.setAttribute('aria-label',open?`${e.name||e.emotion}预览`:`拆开${e.name||e.emotion}`);const flipper=node('span',undefined,'card-flipper'+(open?' is-revealed':''));const back=node('span',undefined,'card-face card-back');const seal=node('span',undefined,'sealed');seal.append(node('span','✦','seal-symbol'),node('span',e.emotion,'seal-text'),node('small','点击翻开'));back.append(node('span',`0${i}`,'card-number'),seal,node('span','给你的一点小惊喜','card-whisper'));const front=node('span',undefined,'card-face card-front');const im=node('img');im.src=API+`/files/${job.id}/${allowed?'sticker-'+i+'.png':'preview-'+i+'.jpg'}?v=20261012-account-recovery`;im.alt=`${e.label} · ${allowed?'512×512透明贴纸':'保护预览'}`;front.classList.toggle('transparent-master',allowed);front.append(im);front.setAttribute('aria-hidden',!open);back.setAttribute('aria-hidden',open);flipper.append(back,front);picture.append(flipper);picture.onclick=()=>{if(!open)return revealCell(i);if(allowed)return openShare(i).catch(e=>toast(e.message));if(!job.free)return toast('这份作品尚未解锁，可在下方使用额度或购买后解锁');if(!job.selected.length){if(selection.has(i))selection.delete(i);else if(selection.size<2)selection.add(i);else return toast('先取消一张，再换选');renderResult()}else toast('解锁整套后可以分享这张')};card.append(picture);const badge=node('span',allowed?'↗':selection.has(i)?'✓':'🔒','card-status');badge.setAttribute('aria-label',allowed?'已解锁，点击分享':selection.has(i)?'已选':'未解锁');card.append(badge);$('result-grid').append(card)}$('claim-area').hidden=job.unlocked||!job.free;$('claim-button').hidden=!!job.selected.length;$('claim-button').disabled=selection.size!==2;$('selection-copy').textContent=job.selected.length?'点已解锁贴纸，即可下载或分享':`翻开后再点选 · 免费选 ${selection.size}/2 张`;$('unlock-area').hidden=job.unlocked;$('delivery-area').hidden=!job.unlocked;$('withdraw-calibration').hidden=!job.calibration;$('privacy-expiry').textContent=job.debug_retained?'生成作品（含未付款作品）暂不自动删除。':job.expires?`本套作品下载截止：${new Date(job.expires*1000).toLocaleString('zh-CN')}。`:'生成结果按下载窗口保留。';$('review-styles').hidden=!job.preview_styles?.length;$('result-description').textContent=job.demo?'本地样例 · 1 套（9 张）':job.unlocked?'已解锁 1 套（9 张）· 点击贴纸即可分享':job.selected?.length?'已领取 2 张 · 点击贴纸即可分享':job.free?'九张均为保护预览；免费体验可任选两张':'这份作品已制作完成；解锁这一套后即可下载和分享';renderUnlockOptions()}
 let revealBusy=new Set(),revealTimers=[];
 function revealCell(i){
  if(!job||revealed.has(i)||job.unlocked||job.selected.includes(i)||revealBusy.has(i))return;
@@ -116,10 +161,69 @@ function revealCell(i){
 $('reveal-all').onclick=()=>{revealTimers.forEach(clearTimeout);revealTimers=[];let n=0;for(let i=1;i<=9;i++)if(!revealed.has(i))revealTimers.push(setTimeout(()=>revealCell(i),n++*160));};$('claim-button').onclick=()=>{$('confirm-copy').textContent='你选中了：'+catalog.theme.expressions.filter(e=>selection.has(e.cell_index)).map(e=>e.label).join('、');$('confirm-dialog').showModal()};action('confirm-claim',async()=>{job=await api(`/generations/${job.id}/claim`,{cells:[...selection]});job=await api('/generations/'+job.id);$('confirm-dialog').close();renderResult();toast('这两种小心情，正式属于你啦。')});
 async function download(name,share=false){if(!share){const link=node('a');link.href=API+`/files/${job.id}/${name}`;link.download=name;document.body.append(link);link.click();link.remove();return}const r=await fetch(API+`/files/${job.id}/${name}`,{credentials:'include'});if(!r.ok){let d=await r.json();throw new Error(d.error)}const blob=await r.blob();const file=new File([blob],name,{type:blob.type});if(share&&navigator.canShare?.({files:[file]})){try{await navigator.share({files:[file],title:'我的小心情'})}catch(e){if(e.name!=='AbortError')throw e}return}const url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);if(share)toast('已下载透明图片，可从聊天软件选择文件发送。')}
 action('zip-button',()=>download('stickers.zip'));action('grid-button',()=>download('grid.png'));action('demo-unlock',async()=>{job=await api('/demo/unlock/'+job.id,{});renderResult();toast('已解锁固定样例；没有产生付款。')});
-async function checkout(product,generationId=job?.id,orderId=null){if(!me.email){pendingUnlock=product==='FIRST_PACK_UNLOCK';$('account-dialog').showModal();return}paymentStatus('正在准备安全结账…');try{const result=await api('/checkout',{product,generation_id:product==='FIRST_PACK_UNLOCK'?generationId:null,order_id:orderId});saved('emjo-order',result.order_id);await initPaddle();$('account-dialog').close();Paddle.Checkout.open({items:result.items,customData:result.customData,customer:result.customer,settings:{displayMode:'overlay',variant:'one-page',locale:document.documentElement.lang==='zh-CN'?'zh-Hans':'en'}});paymentStatus('结账窗口已打开；付款完成后会自动确认。')}catch(e){paymentStatus(e.message||'结账暂时无法启动，请稍后重试');if(product==='FIRST_PACK_UNLOCK'&&e.status===409){$('account-dialog').showModal();refreshHistory()}throw e}}
+async function checkout(product,generationId=null,orderId=null){
+ if(!me.email){pendingUnlock={product,generationId,orderId};$('account-dialog').showModal();return}
+ if(generationId&&catalog.order_workflow!=='work_bound_packs_v1')throw new Error('解锁服务更新中，请稍后刷新。');
+ paymentStatus('正在准备安全结账…');
+ try{
+  const result=await api('/checkout',{product,generation_id:generationId,order_id:orderId});
+  saved('emjo-order',result.order_id);await initPaddle();$('account-dialog').close();
+  Paddle.Checkout.open({items:result.items,customData:result.customData,customer:result.customer,settings:{displayMode:'overlay',variant:'one-page',locale:document.documentElement.lang==='zh-CN'?'zh-Hans':'en'}});
+  paymentStatus('结账窗口已打开；付款完成后会自动确认。');
+ }catch(e){paymentStatus(e.message||'结账暂时无法启动，请稍后重试');if(e.status===409){$('account-dialog').showModal();refreshHistory()}throw e}
+}
 async function refreshHistory(){if(!me?.email)return;const email=me.email;try{const history=await api('/account/history');if(me?.email!==email)return;accountHistory={...history,email};renderHistory(history);renderEntitlements()}catch(e){if(me?.email!==email)return;$('work-list').replaceChildren(node('p','暂时无法读取作品记录，请稍后重试。','small muted'));$('order-list').replaceChildren(node('p','暂时无法读取订单记录，请稍后重试。','small muted'))}}
-function renderHistory(history){const stateLabel={READY:'已制作完成',STYLE_READY:'等待选择风格',QUEUED:'等待制作',GENERATING:'制作中',PROCESSING:'整理贴纸',PREVIEW_QUEUED:'风格预览排队中',PREVIEW_GENERATING:'生成风格中',FAILED:'制作失败',EXPIRED:'已过期',CANCELLED:'已取消'};const orderLabel={PENDING:'待付款',PAID:'已付款',REFUNDED:'已退款',REFUND_REQUIRED:'需要人工处理'};$('work-list').replaceChildren();for(const item of history.jobs){const row=node('div',undefined,'history-row');const copy=node('div',undefined,'history-copy');const date=new Date(item.created*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});const state=item.unlocked?'已解锁 9 张':item.selected.length?'已领取 2 张':item.free?'可免费选 2 张':'尚未解锁';copy.append(node('strong',date+' · '+state),node('small',`${stateLabel[item.state]||item.state}${item.delivery_state==='SENT'?' · 邮件已提交发送':''}`));row.append(copy);const b=node('button','查看');b.className='button secondary';b.disabled=!['READY','STYLE_READY','QUEUED','GENERATING','PROCESSING','PREVIEW_QUEUED','PREVIEW_GENERATING'].includes(item.state);b.onclick=async()=>{job=await api('/generations/'+item.id);saved('emjo-job',job.id);restoreResult();$('account-dialog').close();await displayJob();window.scrollTo({top:0,behavior:'instant'})};row.append(b);$('work-list').append(row)}if(!history.jobs.length)$('work-list').append(node('p','还没有关联到此邮箱的作品。','small muted'));$('order-list').replaceChildren();for(const item of history.orders){const row=node('div',undefined,'history-row');const copy=node('div',undefined,'history-copy');const product=catalog.products.find(p=>p.id===item.product);const date=new Date(item.created*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});copy.append(node('strong',`${product?.name||item.product} · ${item.state==='PENDING'&&item.payment_state==='REVIEW'?'付款核验异常':item.state==='PENDING'&&item.payment_state==='CONFIRMING'?'付款确认中':orderLabel[item.state]||item.state}`),node('small',`${date}${item.delivery_state==='SENT'?' · 邮件已提交发送':''}`));row.append(copy);if(item.state==='PENDING'&&!item.payment_state){const b=node('button','继续付款');b.className='button secondary';b.onclick=()=>checkout(item.product,item.generation_id,item.id).catch(e=>toast(e.message));row.append(b)}else if(item.state==='PENDING'){copy.append(node('small','请勿重复付款，正在核对交付状态。'));const b=node('button','刷新状态','button secondary');b.onclick=()=>refreshHistory();row.append(b)}else if(item.generation_id){const b=node('button','查看');b.className='button secondary';b.onclick=async()=>{job=await api('/generations/'+item.generation_id);saved('emjo-job',job.id);restoreResult();$('account-dialog').close();await displayJob();window.scrollTo({top:0,behavior:'instant'})};row.append(b)}$('order-list').append(row)}if(!history.orders.length)$('order-list').append(node('p','还没有订单记录。','small muted'))}
-action('unlock-button',()=>checkout('FIRST_PACK_UNLOCK'));$('account-button').onclick=()=>{$('account-dialog').showModal();refreshHistory()};action('send-code',async()=>{const result=await api('/auth/code',{email:$('email-input').value});$('code-hint').textContent=result.demo_code?`本地样例验证码：${result.demo_code}（不会发送邮件）`:'验证码已发送，请检查收件箱和垃圾邮件。'});action('verify-code',async()=>{me=await api('/auth/verify',{email:$('email-input').value,code:$('code-input').value,referral:saved('emjo-ref')||null});renderMe();refreshHistory();toast('邮箱已验证');if(saved('emjo-order'))monitorPayment(saved('emjo-order'));if(pendingGeneration){const next=pendingGeneration==='start'?'mobile-start':'next-style';pendingGeneration=false;$('account-dialog').close();$(next).click();return}if(pendingUnlock){pendingUnlock=false;$('account-dialog').close();await checkout('FIRST_PACK_UNLOCK')}});action('logout-button',async()=>{await api('/auth/logout',{});pendingGeneration=false;pendingUnlock=false;stopPayment();me=await api('/me');renderMe();$('account-dialog').close();if(job){job=null;show('maker');saved('emjo-job','')}});action('copy-invite',async()=>{const copied=await copyText(inviteURL(),$('invite-url'));toast(copied?'邀请链接已复制':'长按下方邀请链接，选择复制。')});action('withdraw-calibration',async()=>{await api(`/generations/${job.id}/calibration`,null,'DELETE');job.calibration=false;renderResult();toast('校准授权已撤回，校准副本已安排删除。')});$('privacy-button').onclick=()=>{renderPrivacy();$('privacy-dialog').showModal()};document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
+function renderHistory(history){
+ const stateLabel={READY:'已制作完成',STYLE_READY:'等待选择风格',QUEUED:'等待制作',GENERATING:'制作中',PROCESSING:'整理贴纸',PREVIEW_QUEUED:'风格预览排队中',PREVIEW_GENERATING:'生成风格中',FAILED:'制作失败',EXPIRED:'已过期',CANCELLED:'已取消'};
+ const orderLabel={PENDING:'待付款',PAID:'已付款',REFUNDED:'已退款',REFUND_REQUIRED:'需要人工处理'};
+ const displayDate=stamp=>new Date(stamp*1000).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+ $('work-list').replaceChildren();
+ for(const item of history.jobs){
+  const row=node('article',undefined,'history-row work-history-card'),copy=node('div',undefined,'history-copy');
+  const thumb=node('div',undefined,'history-thumb');
+  if(item.state==='READY'){const im=node('img');im.src=API+`/files/${item.id}/preview-1.jpg`;im.alt=`作品 #${shortId(item.id)} 的保护预览`;im.loading='lazy';thumb.append(im)}else thumb.append(node('span','✦'));
+  const state=item.state!=='READY'?(stateLabel[item.state]||item.state):item.unlocked?'已解锁 · 1 套（9 张）':item.selected?.length?'已免费领取 2 张 · 整套待解锁':item.free?'可免费选 2 张 · 整套待解锁':'待解锁 · 1 套（9 张）';
+  copy.append(node('strong',workTitle(item)),node('span',state,'work-state'),node('small',`${displayDate(item.created)}${item.style?' · '+(catalog.styles.find(s=>s.id===item.style)?.name||item.style):''}`));
+  if(item.delivery_state==='SENT')copy.append(node('small','交付邮件已提交发送'));
+  if(item.related_order_ids?.length)copy.append(node('small','关联订单 '+item.related_order_ids.map(id=>'#'+shortId(id)).join('、')));
+  row.append(thumb,copy);
+  const actions=node('div',undefined,'history-actions');
+  const view=taskButton(item.state==='STYLE_READY'?'继续选画风':item.state==='READY'?(item.unlocked?'下载 / 分享':'查看并解锁'):'查看进度',()=>openWork(item.id));
+  view.disabled=!['READY','STYLE_READY',...busyStates].includes(item.state);actions.append(view);row.append(actions);$('work-list').append(row);
+ }
+ if(!history.jobs.length)$('work-list').append(node('p','还没有关联到此邮箱的作品。','small muted'));
+ $('order-list').replaceChildren();
+ for(const item of history.orders){
+  const row=node('article',undefined,'history-row order-history-card'),copy=node('div',undefined,'history-copy');
+  const product=catalog.products.find(p=>p.id===item.product),entitlement=item.entitlement;
+  const state=item.state==='PENDING'&&item.payment_state==='REVIEW'?'付款核验异常':item.state==='PENDING'&&item.payment_state==='CONFIRMING'?'付款确认中':orderLabel[item.state]||item.state;
+  copy.append(node('strong',product?.name||item.product),node('span',state,'order-state'),node('small',`订单 #${shortId(item.id)} · ${displayDate(item.created)}`));
+  const amount=orderAmount(item);
+  if(amount&&['PAID','REFUNDED','REFUND_REQUIRED'].includes(item.state))copy.append(node('small',`${item.state==='REFUNDED'?'原实付':'实付'} ${amount}${item.amount===0?'（全额优惠）':''}`));
+  else if(item.state==='PENDING'&&product)copy.append(node('small',priceLabel(product)));
+  if(item.payment_review_required){const issue=item.payment_issues?.includes('duplicate_order_transaction')?'同一订单检测到额外付款，需要人工核对。请勿重复付款。':'这笔订单有付款需要人工核对。请勿重复付款。';copy.append(node('p',issue,'payment-issue'))}
+  if(product?.packs&&entitlement){
+   copy.append(node('span',`购买 ${entitlement.quantity} 套 · 已使用 ${entitlement.used} 套 · 剩余 ${entitlement.remaining} 套`,'order-entitlement'));
+   if(entitlement.pending)copy.append(node('small',`另有 ${entitlement.pending} 套已预留，正在制作或等待选择画风。`));
+   if(entitlement.revoked)copy.append(node('small','此订单的制作额度已撤回。'));
+  }else if(product?.packs&&item.state==='PENDING')copy.append(node('small',`付款后获得 ${product.packs} 套制作额度，可分次使用。`));
+  if(item.fulfillment==='ALREADY_UNLOCKED')copy.append(node('small','目标作品已解锁，本次购买的额度已全部存入账户，没有重复消耗。'));
+  else if(item.generation_id)copy.append(node('small',`本单用于解锁作品 #${shortId(item.generation_id)} · 1 套（9 张）。`));
+  else if(item.state==='PAID'&&product?.packs)copy.append(node('small',item.generation_ids?.length?'已用于下方作品，剩余额度可继续使用。':'制作额度已到账，从上方“我的作品”解锁，或新制作。'));
+  if(!item.deliveries?.length&&item.delivery_state==='SENT')copy.append(node('small','交付邮件已提交发送'));
+  const actions=node('div',undefined,'history-actions');
+  if(item.payment_review_required)actions.append(taskButton('刷新核验状态',()=>refreshHistory()));
+  else if(item.state==='PENDING'&&!item.payment_state)actions.append(taskButton('继续付款',()=>checkout(item.product,item.generation_id,item.id)));
+  else if(item.state==='PENDING'){copy.append(node('small','请勿重复付款，正在核对状态。'));actions.append(taskButton('刷新状态',()=>refreshHistory()))}
+  const ids=[...new Set([...(item.generation_ids||[]),...(item.generation_id?[item.generation_id]:[])])];
+  const links=node('div',undefined,'order-work-links');
+  for(const id of ids){const entry=node('div',undefined,'order-work-entry');entry.append(taskButton(`查看作品 #${shortId(id)}`,()=>openWork(id),'quiet order-work-link'));const delivery=item.deliveries?.find(d=>d.generation_id===id);if(delivery)entry.append(node('small',deliveryLabel(delivery)));links.append(entry)}
+  if(!ids.length&&item.state==='PAID'&&product?.packs)actions.append(taskButton('选择作品 / 制作',()=>{$('work-list').scrollIntoView({behavior:'smooth',block:'start'});toast('打开一份待解锁作品使用额度，或关闭设置后开始新制作。')}));
+  row.append(copy);if(links.childNodes.length)row.append(links);if(actions.childNodes.length)row.append(actions);$('order-list').append(row);
+ }
+ if(!history.orders.length)$('order-list').append(node('p','还没有订单记录。','small muted'));
+}
+action('unlock-button',()=>checkout('FIRST_PACK_UNLOCK',job.id));action('balance-unlock-button',unlockWithBalance);$('account-button').onclick=()=>{$('account-dialog').showModal();refreshHistory()};action('send-code',async()=>{const result=await api('/auth/code',{email:$('email-input').value});$('code-hint').textContent=result.demo_code?`本地样例验证码：${result.demo_code}（不会发送邮件）`:'验证码已发送，请检查收件箱和垃圾邮件。'});action('verify-code',async()=>{me=await api('/auth/verify',{email:$('email-input').value,code:$('code-input').value,referral:saved('emjo-ref')||null});renderMe();refreshHistory();toast('邮箱已验证');if(saved('emjo-order'))monitorPayment(saved('emjo-order'));if(pendingGeneration){const next=pendingGeneration==='start'?'mobile-start':'next-style';pendingGeneration=false;$('account-dialog').close();$(next).click();return}if(pendingUnlock){const next=pendingUnlock;pendingUnlock=false;$('account-dialog').close();await checkout(next.product,next.generationId,next.orderId)}});action('logout-button',async()=>{await api('/auth/logout',{});pendingGeneration=false;pendingUnlock=false;stopPayment();me=await api('/me');renderMe();$('account-dialog').close();if(job){job=null;show('maker');saved('emjo-job','')}});action('copy-invite',async()=>{const copied=await copyText(inviteURL(),$('invite-url'));toast(copied?'邀请链接已复制':'长按下方邀请链接，选择复制。')});action('withdraw-calibration',async()=>{await api(`/generations/${job.id}/calibration`,null,'DELETE');job.calibration=false;renderResult();toast('校准授权已撤回，校准副本已安排删除。')});$('privacy-button').onclick=()=>{renderPrivacy();$('privacy-dialog').showModal()};document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 // Optional crop: the original remains the default. Crop only affects the first reference.
 let cropImage,cropRatio=1,zoom=1,offset={x:0,y:0},drag;
 const canvas=$('crop-canvas'),ctx=canvas.getContext('2d');

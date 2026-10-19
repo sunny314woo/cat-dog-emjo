@@ -5,6 +5,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require('node:path').join(__dirname, '../app.js'), 'utf8');
 const monitor = source.slice(source.indexOf('let paddleReady,'), source.indexOf('function initPaddle()'));
 const paddleInit = source.slice(source.indexOf('function initPaddle()'), source.indexOf('async function addPhotos'));
+const checkout = source.slice(source.indexOf('async function checkout('), source.indexOf('async function refreshHistory()'));
 
 function page(responses, storage = new Map([['emjo-order', 'order-1']])) {
   const status = {textContent: '', hidden: true};
@@ -95,4 +96,51 @@ test('payment review stops checkout polling and visibly warns against duplicate 
   assert.match(p.status.textContent,/付款核验异常/);
   assert.match(p.status.textContent,/请勿重复付款/);
   assert.equal(p.timers.length,0);
+});
+
+test('an extra charge on a paid order remains a visible review issue', async () => {
+  const p=page([{state:'PAID',generation_id:'generation-1',payment_review_required:true,payment_issues:['duplicate_order_transaction']}]);
+  vm.runInContext("monitorPayment('order-1')",p.context);await p.settle();
+  assert.match(p.status.textContent,/额外付款需要人工核对/);
+  assert.match(p.status.textContent,/请勿重复付款/);
+  assert.equal(p.storage.get('emjo-order'),'');
+  assert.equal(p.storage.get('emjo-job'),undefined);
+  assert.equal(p.timers.length,0);
+});
+
+test('an already unlocked target reports retained quota instead of another consumption', async () => {
+  const p=page([{state:'PAID',generation_id:'generation-1',fulfillment:'ALREADY_UNLOCKED',delivery_state:'SENT'}]);
+  vm.runInContext("monitorPayment('order-1')",p.context);await p.settle();
+  assert.match(p.status.textContent,/购买额度已全部存入账户/);
+  assert.match(p.status.textContent,/没有重复消耗/);
+  assert.equal(p.storage.get('emjo-order'),'');
+});
+
+function checkoutPage(workflow){
+  const calls=[];
+  const context=vm.createContext({
+    me:{email:'buyer@example.com'},catalog:{order_workflow:workflow},
+    api:async(path,body)=>{calls.push({path,body});return {order_id:'order-1',items:[],customData:{},customer:{}}},
+    $:()=>({close:()=>{},showModal:()=>{}}),saved:()=>{},initPaddle:async()=>{},
+    Paddle:{Checkout:{open:()=>{}}},paymentStatus:()=>{},refreshHistory:()=>{},
+    document:{documentElement:{lang:'zh-CN'}},
+  });
+  vm.runInContext(checkout,context);
+  return {calls,context};
+}
+
+test('work-bound purchases are blocked before sending to an older backend', async()=>{
+  const p=checkoutPage(undefined);
+  await assert.rejects(vm.runInContext("checkout('PACK_3','work-1')",p.context),/解锁服务更新中/);
+  assert.equal(p.calls.length,0);
+});
+
+test('work-bound purchases keep the explicit target while account top-ups have none', async()=>{
+  const p=checkoutPage('work_bound_packs_v1');
+  await vm.runInContext("checkout('PACK_3','work-1')",p.context);
+  await vm.runInContext("checkout('PACK_1')",p.context);
+  assert.equal(p.calls[0].body.generation_id,'work-1');
+  assert.equal(p.calls[1].body.generation_id,null);
+  assert.equal(p.calls[0].body.product,'PACK_3');
+  assert.equal(p.calls[1].body.product,'PACK_1');
 });

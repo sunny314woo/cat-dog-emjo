@@ -62,3 +62,42 @@ body{width:100%}main,.studio,#result-view,#maker{min-width:0}
 .share-backgrounds input:checked+.background-swatch{box-shadow:0 0 0 3px #b47128}.share-backgrounds input:focus-visible+.background-swatch{outline:2px solid #292d32;outline-offset:5px}
 #share-file-info{text-align:center;font-size:13px;min-height:21px}
 .history-section{margin:18px 0}.history-list{display:grid;gap:8px;margin-top:9px}.history-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}.history-copy{min-width:0;display:grid;gap:4px}.history-copy strong{font-size:12px}.history-copy small{font-size:10px;line-height:1.5;color:var(--muted)}.history-row .button{min-height:34px;padding:7px 10px;font-size:11px;flex:none}
+
+/* Each saved work is one set; purchase records describe the separate quota. */
+.history-explainer{margin:6px 0 12px}
+.work-history-card,.order-history-card{background:var(--paper);border:1px solid var(--line);border-radius:15px;padding:13px;gap:12px}
+.work-history-card{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:start}
+.history-thumb{width:64px;aspect-ratio:1;display:grid;place-items:center;background:#e8e1d3;border-radius:12px;overflow:hidden;color:#b7986e;font-size:28px}
+.history-thumb img{width:100%;height:100%;object-fit:contain}
+.work-history-card .history-copy{gap:6px}
+.history-copy strong{line-height:1.65;overflow-wrap:anywhere}
+.work-state,.order-state{font-size:11px;line-height:1.65;color:#8b622f}
+.history-actions{display:flex;flex-wrap:wrap;gap:8px}
+.work-history-card .history-actions{grid-column:2}
+.history-row .button{white-space:normal;text-align:center;line-height:1.6;min-height:36px}
+.order-history-card{display:grid;align-items:start}
+.order-state{justify-self:start;padding:2px 8px;background:#f4e7d1;border-radius:20px}
+.order-entitlement{font-size:12px;line-height:1.8;margin-top:5px}
+.order-work-links{display:flex;flex-wrap:wrap;gap:4px 12px;padding-top:8px;border-top:1px solid var(--line)}
+.order-work-link{font-size:11px;padding:4px 0;color:#92511e;text-decoration:underline;text-underline-offset:4px;text-align:left;overflow-wrap:anywhere}
+.order-work-entry{display:grid;gap:2px}.order-work-entry small{font-size:10px;color:var(--muted);line-height:1.6}
+.history-copy .payment-issue{margin:5px 0;padding:9px 11px;border-radius:8px;background:#f7e1d5;color:#8f3b1b;font-size:11px;line-height:1.8}
+.result-work-id{font-size:12px;color:#8b622f;margin:10px 0 0;overflow-wrap:anywhere}
+.unlock-area{background:#f2eadb;border:1px solid #e5d6bf;padding:22px;border-radius:20px;max-width:810px;margin:22px auto 0}
+.work-unlock .eyebrow{margin:0 0 8px;font-size:9px;color:#9e814f}
+.work-unlock h3{font-size:21px;margin:0;line-height:1.6}
+.work-unlock p{font-size:12px;line-height:1.9;margin:8px 0;color:#7a6b55}
+.unlock-option{padding:14px 0;border-top:1px solid #e1d4c0;margin-top:14px}
+.balance-unlock-option p{color:#5f513e}
+.work-unlock .button{white-space:normal;text-align:center;line-height:1.6}
+.work-unlock .price-note{font-size:13px;margin:8px 0 12px}
+.work-unlock-store{border-top:1px solid #e1d4c0;margin-top:10px;padding-top:14px}
+.work-unlock-store summary{font-size:13px;line-height:1.8;color:#8c4d1f;cursor:pointer}
+.work-unlock-store summary:focus-visible{outline:3px solid #e79657;outline-offset:4px;border-radius:4px}
+.work-unlock-store .product-list{margin:10px 0 0}
+.work-product-row{display:grid;gap:12px;grid-template-columns:minmax(0,1fr);padding:16px 0}
+.work-product-row .button{justify-self:start;background:var(--card)}
+#product-list .product-row{align-items:start;flex-wrap:wrap}
+#product-list .product-benefits{flex-basis:200px}
+#product-list .button{margin-left:auto;white-space:normal}
+@media(max-width:540px){.unlock-area{padding:16px;margin-top:16px}.work-unlock h3{font-size:18px}.work-unlock p{font-size:11px}.work-unlock .eyebrow{font-size:8px}.work-history-card,.order-history-card{padding:11px}.history-thumb{width:56px}.work-history-card{grid-template-columns:56px minmax(0,1fr);gap:10px}.work-history-card .history-copy strong{font-size:11px}.history-copy small{font-size:10px}.work-unlock .button{font-size:12px;padding:12px}.work-product-row .button{width:100%}.balance-box{gap:12px}.result-heading .result-work-id{font-size:10px;margin-top:7px}}

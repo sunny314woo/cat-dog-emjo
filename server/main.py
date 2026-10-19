@@ -100,6 +100,7 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
             'me':service.me(sid),'calibration':{'enabled':settings.calibration_enabled,'limit':settings.calibration_limit,'days':settings.calibration_days},
             'workflow':'personalized_styles_v1',
             'payment_workflow':'durable_notifications_v1',
+            'order_workflow':'work_bound_packs_v1',
             'delivery_workflow':'discounted_multiformat_v2',
             'generation_requires_email':settings.mode=='live',
             'pack_prompt_version':PACK_PROMPT_VERSION,
@@ -157,16 +158,15 @@ def create_app(settings=None, store=None, providers=None, start_worker=True):
                             media_type='application/zip' if name.endswith('.zip') else 'image/png' if name.endswith('.png') else 'image/gif' if name.endswith('.gif') else 'image/webp' if name.endswith('.webp') else 'image/jpeg')
     @app.post(prefix+'/checkout')
     def checkout(body:CheckoutInput,request:Request):return service.checkout(identity(request),body.product,body.generation_id,body.order_id)
+    @app.post(prefix+'/generations/{jid}/unlock')
+    def unlock(jid:str,request:Request):return service.unlock(identity(request),jid)
     @app.get(prefix+'/orders/{oid}')
     def order(oid:str,request:Request):
         _,user,_=service.current(identity(request))
         with store.transaction() as tx:
             row=tx.get('orders',oid)
             if not user or not row or row['user_id']!=user['id']:raise RuleError('订单不存在',404)
-            mail=tx.get('mail','delivery-'+row['job_id']) if row.get('job_id') else None
-            return {'state':row['state'],'product':row['product'],'generation_id':row.get('job_id'),
-                    'payment_state':service.order_payment_state(tx,row),
-                    'delivery_state':mail['state'] if mail else None,'delivery_attempts':mail['attempts'] if mail else 0}
+            return service._public_order(tx,row)
     @app.post(prefix+'/generations/{jid}/feedback')
     def feedback(jid:str,body:FeedbackInput,request:Request):
         sid=identity(request)

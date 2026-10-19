@@ -1,5 +1,7 @@
 # My Pet Stickers / cat-dog-emjo
 
+- 2026-10-19 订单表达统一以套为主，1套=9张不同表情。现有多套商品是可分次使用的额度，不承诺已有27/45张新内容；每份作品独立解锁，可用1套额度或绑定作品普通购买，首次优惠资格另算。作品、订单、剩余套数与交付的关系见 `docs/product/ORDER_WORKS_2026-10-19.md`；本轮发布及未确认的余额交付状态见 `docs/ai-handoff/order-work-fulfillment-2026-10-19.md`。
+
 - 本目录是独立 Git 仓库，远程为 `git@github.com:sunny314woo/cat-dog-emjo.git`，不是外层 `wisteria-suite` 的普通受跟踪目录。Git 操作必须在本目录执行。
 - 新版首发 H5，目标使用 `https://wisteriasoftware.uk/sticker/`，与 Outline 官网同域名；旧 `pet.wisteriasoftware.uk` 为历史站点。正式路径发布前核对。只修改本项目文件，中文沟通。
 - 需求以 `docs/PROJECT_OVERVIEW.md` 的 V2.3 整理稿为主：首版九张，匿名生成、免费任选两张正式贴纸，完整解锁时邮箱验证码账户，支付确认后同一套九张、切图及邮件交付；后续生成消耗 Pack。Python／FastAPI／MySQL／pymysql 原生 SQL，禁止 ORM。账号／语音服务 `services/account-server` 和 Outline `services/api-server` 只读参考；后端独立部署，不影响同台其他服务。

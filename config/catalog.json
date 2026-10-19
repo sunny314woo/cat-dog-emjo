@@ -215,31 +215,31 @@
   "products": [
     {
       "id": "FIRST_PACK_UNLOCK",
-      "name": "9 张 · 1 套完整表情包",
+      "name": "解锁本作品 · 1 套（9 张）",
       "packs": 0,
       "usd_minor": 699,
-      "description": "512 × 512 透明 PNG · 单张分享 · 整套 ZIP · 邮件交付"
+      "description": "解锁当前作品 · 同一套多尺寸 PNG／GIF／WebP · ZIP 与邮件交付"
     },
     {
       "id": "PACK_1",
-      "name": "9 张 · 1 套完整表情包",
+      "name": "1 套制作额度",
       "packs": 1,
       "usd_minor": 699,
-      "description": "512 × 512 透明 PNG · 单张分享 · 整套 ZIP · 邮件交付"
+      "description": "可分次使用 · 每套 9 张不同表情 · 新制作或解锁已有作品，每套各用 1 套额度"
     },
     {
       "id": "PACK_3",
-      "name": "27 张 · 3 套完整表情包",
+      "name": "3 套制作额度",
       "packs": 3,
       "usd_minor": 1999,
-      "description": "512 × 512 透明 PNG · 单张分享 · 整套 ZIP · 邮件交付 · 可分次制作"
+      "description": "可分次使用 · 每套 9 张不同表情 · 新制作或解锁已有作品，每套各用 1 套额度"
     },
     {
       "id": "PACK_5",
-      "name": "45 张 · 5 套完整表情包",
+      "name": "5 套制作额度",
       "packs": 5,
       "usd_minor": 2999,
-      "description": "512 × 512 透明 PNG · 单张分享 · 整套 ZIP · 邮件交付 · 可分次制作"
+      "description": "可分次使用 · 每套 9 张不同表情 · 新制作或解锁已有作品，每套各用 1 套额度"
     }
   ]
 }
