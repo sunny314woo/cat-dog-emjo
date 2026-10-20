@@ -197,7 +197,8 @@ function renderHistory(history){
   const row=node('article',undefined,'history-row order-history-card'),copy=node('div',undefined,'history-copy');
   const product=catalog.products.find(p=>p.id===item.product),entitlement=item.entitlement;
   const state=item.state==='PENDING'&&item.payment_state==='REVIEW'?'付款核验异常':item.state==='PENDING'&&item.payment_state==='CONFIRMING'?'付款确认中':orderLabel[item.state]||item.state;
-  copy.append(node('strong',product?.name||item.product),node('span',state,'order-state'),node('small',`订单 #${shortId(item.id)} · ${displayDate(item.created)}`));
+  const title=product?.packs?`${product.packs} 套制作额度`:item.product==='FIRST_PACK_UNLOCK'?'解锁本作品 · 1 套（9 张）':product?.name||item.product;
+  copy.append(node('strong',title),node('span',state,'order-state'),node('small',`订单 #${shortId(item.id)} · ${displayDate(item.created)}`));
   const amount=orderAmount(item);
   if(amount&&['PAID','REFUNDED','REFUND_REQUIRED'].includes(item.state))copy.append(node('small',`${item.state==='REFUNDED'?'原实付':'实付'} ${amount}${item.amount===0?'（全额优惠）':''}`));
   else if(item.state==='PENDING'&&product)copy.append(node('small',priceLabel(product)));
